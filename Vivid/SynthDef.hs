@@ -40,6 +40,7 @@
 {-# LANGUAGE NoRebindableSyntax #-}
 
 -- {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -227,8 +228,9 @@ encodeSD = encodeSynthDefFile . SynthDefFile . (:[]) . sdToLiteral
 -- | This is the hash of the UGen graph and params, but not the name!
 --   So (re)naming a SynthDef will not change its hash.
 instance Hashable SynthDef where
-   hash (SynthDef _name params ugens) = hash . encodeSD $
-      SynthDef (SDName_Named "VIVID FTW") params ugens
+   hashWithSalt salt (SynthDef _name params ugens) =
+      hashWithSalt salt . encodeSD $
+         SynthDef (SDName_Named "VIVID FTW") params ugens
 
 gatherConstants :: [(Int, UGen)] -> [Float]
 gatherConstants ugens =
@@ -290,6 +292,7 @@ defineSD synthDef =
 
 defineSDIfNeeded :: SynthDef -> IO ()
 defineSDIfNeeded synthDef@(SynthDef name _ _) = do
+   let !_ = scServerState
    hasBeenDefined <- (((name, hash synthDef) `Set.member`) <$>) $
       readTVarIO (scServer_definedSDs scServerState)
    unless hasBeenDefined $ do
@@ -401,10 +404,10 @@ sdLitPretty synthDef = mconcat [
     "Constants: ", show $ _synthDefConstants synthDef
   , "\n"
   , mconcat$
-      (flip map) (Literal._synthDefUGens synthDef) $ \ug -> mconcat [
-                show (_uGenSpec_name ug) <> " - " <> show (_uGenSpec_calcRate ug)
+      (flip map) (zip [0..] (Literal._synthDefUGens synthDef)) $ \(i,ug) -> mconcat [
+                show i <> " " <> show (_uGenSpec_name ug) <> " - " <> show (_uGenSpec_calcRate ug)
                ,"\n"
-               ,mconcat $ map ((<>"\n") . ("  "<>) . show) $ _uGenSpec_inputs ug
+               ,mconcat $ map ((<>"\n") . ("  "<>) . showInputSpec) $ _uGenSpec_inputs ug
                ,case BS8.unpack (_uGenSpec_name ug) of
                    "UnaryOpUGen" -> mconcat [ "  "
                       , show ( specialIToUOp (_uGenSpec_specialIndex ug))
@@ -415,6 +418,14 @@ sdLitPretty synthDef = mconcat [
                    _ -> ""
                ]
   ]
+ where
+   showInputSpec :: InputSpec -> String
+   showInputSpec (InputSpec_Constant constantIndex) = mconcat [
+       "Constant: "
+      ,show $ (_synthDefConstants synthDef) !! fromEnum constantIndex
+      ," (index ", show constantIndex, ")"
+      ]
+   showInputSpec x = show x
 
 -- | Immediately stop a synth playing
 -- 

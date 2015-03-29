@@ -2,7 +2,7 @@
 --  see http://haskell.org/cabal/users-guide/
 
 name:                vivid
-version:             0.1.0.2
+version:             0.1.0.3
 x-revision: 1
 synopsis:            Sound synthesis with SuperCollider
 description:         Sound synthesis with SuperCollider. Start with Vivid.SynthDef
@@ -33,7 +33,7 @@ library
     , bytestring
     , containers
     , deepseq
-    , hashable == 1.1.*
+    , hashable >= 1.2
     , mtl
     , network
     , split

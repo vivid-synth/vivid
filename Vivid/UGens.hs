@@ -96,6 +96,7 @@ module Vivid.UGens (
    -- ** Functions
 
    , midiCPS
+   , cpsMIDI
    , abs'
    , neg
    , binaryOp
