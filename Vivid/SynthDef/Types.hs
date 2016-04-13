@@ -1,35 +1,58 @@
 -- | Internal. Just use "Vivid.SynthDef"
 
 {-# OPTIONS_HADDOCK show-extensions #-}
+-- {-# LANGUAGE DeriveGeneric #-}
+
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs, NoMonoLocalBinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+
+{-# LANGUAGE NoIncoherentInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.SynthDef.Types (
      Signal(..)
    , CalculationRate(..)
    , SynthDef(..)
    , SDName(..)
-   , SDState
+   , SDBody'
+   , zoomSDBody
+   , zoomSynthDef
    , UGen(..)
    , UGenName(..)
    , UnaryOp(..)
    , BinaryOp(..)
+   , module Vivid.SynthDef.TypesafeArgs
    ) where
 
-import Control.Monad.State
+import Vivid.SynthDef.TypesafeArgs -- (VarSet(..), Subset, Parameter)
+
+import Control.Monad.State (State, get, runState, put)
 import Data.ByteString (ByteString)
+-- import Data.Hashable
 import Data.Int (Int32)
+-- import qualified Data.Map as Map
 import Data.Map (Map)
+-- import Data.Monoid
+import GHC.TypeLits
+import Prelude
 
 data Signal
-   = Constant Float -- constant
-   | Param ByteString -- parameter
-   | UGOut Int Int32 -- the name of the ugen, and its output #
- deriving (Show, Eq)
+   = Constant Float
+   | Param ByteString
+   | UGOut Int Int32  -- the name of the ugen, and its output #
+  deriving (Show, Eq)
+
+-- instance Hashable Signal
 
 -- | Internal representation of Synth Definitions. Usually, use 'Vivid.SynthDef.sd' instead of
 --   making these by hand.
 -- 
 --   This representation (especially '_sdUGens') might change in the future.
-data SynthDef = SynthDef {
+data SynthDef (args :: [Symbol]) = SynthDef {
     _sdName :: SDName
    ,_sdParams :: [(ByteString, Float)]
    ,_sdUGens :: Map Int UGen
@@ -42,9 +65,12 @@ data SDName
    | SDName_Hash
  deriving (Show, Eq, Read, Ord)
 
+-- instance Hashable SDName
+
 -- | Representation of Unit Generators. You usually won't be creating these
 --   by hand, but instead using things from the library in 'Vivid.UGens'
-data UGen = UGen {
+data UGen
+   = UGen {
     _ugenName :: UGenName
    ,_ugenCalculationRate :: CalculationRate
    ,_ugenIns :: [Signal]
@@ -52,13 +78,17 @@ data UGen = UGen {
    -- ugen's calculation rate, so we don't need to represent them:
    ,_ugenNumOuts :: Int
    }
- deriving (Show, Eq)
+  deriving (Show, Eq)
+
+-- instance Hashable UGen
 
 data UGenName
    = UGName_S ByteString
    | UGName_U UnaryOp
    | UGName_B BinaryOp
  deriving (Show, Eq)
+
+-- instance Hashable UGenName
 
 -- The order of these is important for the enum instance:
 -- | The rate that a UGen computes at
@@ -69,11 +99,46 @@ data CalculationRate
    | DR -- ^ demand rate
  deriving (Show, Read, Eq, Enum, Ord)
 
+-- instance Hashable CalculationRate
+
 -- | State monad to construct SynthDefs
 -- 
 --   The SynthDef is an under-construction synth definition
 --   The [Int] is the id supply. Its type definitely could change in the future
-type SDState = State ([Int], SynthDef)
+type SDBody' (args :: [Symbol])
+   = State ([Int], SynthDef args, VarSet args)
+
+zoomSynthDef :: (Subset a b) => SynthDef a -> SynthDef b
+zoomSynthDef (SynthDef a b c) = SynthDef a b c
+
+-- | Given
+-- 
+--   > good0 :: SDBody '["2"] ()
+--   > good0 = return ()
+-- 
+--   > good1 :: SDBody '["3","1","3","1"] ()
+--   > good1 = return ()
+-- 
+--   > bad0 :: SDBody '["bwahaha"] ()
+--   > bad0 = return ()
+-- 
+--   > outer :: SDBody '[ "1", "2", "3"]()
+--   > outer = do
+--   >    zoomSDBody good0 -- works
+--   >    zoomSDBody good1 -- works
+--   >    -- zoomSDBody bad0 -- doesn't work - great!
+zoomSDBody :: (Subset inner outer) => SDBody' inner a -> SDBody' outer a
+zoomSDBody x = do
+   (initA,initB,_) <- get
+   -- We call this "cheat" cause it actually goes from outer
+   -- to inner -- it's only safe cause we already restricted
+   -- the input to this outer function ('zoomSDBody'):
+   let cheatSD :: SynthDef a -> SynthDef b
+       cheatSD (SynthDef a b c) = SynthDef a b c
+   let (val,(a,b,_)) = runState x (initA, cheatSD initB,VarSet)
+   put (a, zoomSynthDef b, VarSet)
+   return val
+
 
 -- | Binary signal operations. For the simple ones (like 'Add', 'Mul', etc.),
 --   there are functions (like 'Vivid.UGens.~+', 'Vivid.UGens.~*', etc.)
@@ -99,12 +164,16 @@ data BinaryOp
    | SqrSum -- ^ (a + b) ^ 2
    | SqrDif -- ^ (a - b) ^ 2
    | AbsDif -- ^ abs(a - b)
-   | Thresh | AMClip | ScaleNeg | Clip2 | Excess
+   | Thresh
+   | AMClip
+   | ScaleNeg
+   | Clip2 -- Like 'Vivid.UGens.Maths.clip' but the min value is always the negative of the max value
+   | Excess
    | Fold2 | Wrap2 | FirstArg
    | RandRange | ExpRandRange | NumBinarySelectors
  deriving (Show, Eq, Ord, Enum)
 
-
+-- instance Hashable BinaryOp
 
 -- These seem to only be in the SuperCollider source:
 --   sc/server/plugins/(Bi|U)naryOpUgens.cpp
@@ -114,7 +183,11 @@ data BinaryOp
 -- 
 --   This type might not be exposed in the future.
 data UnaryOp
-   = Neg | Not | IsNil | NotNil | BitNot | Abs | AsFloat | AsInt | Ciel | Floor
+   = Neg | Not | IsNil | NotNil
+   | BitNot -- ^ There's a bug in some SC versions where .bitNot isn't implemented
+            --   correctly. Vivid backfills it with a fix, so you can use BitNot with
+            --   any SC version
+   | Abs | AsFloat | AsInt | Ciel | Floor
    | Frac | Sign | Squared | Cubed | Sqrt | Exp | Recip | MIDICPS | CPSMIDI
    | MIDIRatio | RatioMIDI
     -- dbamp and ampdb: converts betw db and "amp" so that e.g. -inf db == 0 amp
@@ -127,3 +200,5 @@ data UnaryOp
    | Silence | Thru | RectWindow | HanWindow | WelchWindow | TriWindow | Ramp
    | SCurve | NumUnarySelectors
  deriving (Show, Eq, Ord, Enum)
+
+-- instance Hashable UnaryOp

@@ -8,7 +8,12 @@
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 {-# LANGUAGE NoRebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+{-# LANGUAGE NoIncoherentInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.SynthDef.Literally (
      LiteralSynthDef(..)
@@ -20,6 +25,13 @@ module Vivid.SynthDef.Literally (
    , ParamName(..)
    , SynthDefFile(..)
    , OutputSpec(..)
+
+   , uOpToSpecialI
+   , biOpToSpecialI
+   , specialIToUOp
+   , specialIToBiOp
+
+   , sdLitPretty
    ) where
 
 import Vivid.SynthDef.Types
@@ -28,11 +40,10 @@ import Vivid.OSC.Util (floatToWord, wordToFloat)
 import Control.Arrow (first)
 import Control.Monad (when)
 import Data.Binary (decode, encode)
-import qualified Data.ByteString as B
-import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8
-import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString as BS (cons, splitAt, drop, head, length)
+import qualified Data.ByteString.Char8 as BS8 (unpack, pack)
+import qualified Data.ByteString.Lazy as BSL (fromStrict, toStrict)
 import Data.Int
 import Data.List.Split (chunksOf)
 import Data.Monoid
@@ -51,6 +62,7 @@ data LiteralSynthDef
 data SynthDefFile = SynthDefFile [LiteralSynthDef]
  deriving (Show)
 
+-- Doesn't need to be in IO - yes, I know!
 decodeSynthDefFile :: ByteString -> IO SynthDefFile
 decodeSynthDefFile blob = do
    let (top, rest) = BS.splitAt 4 blob
@@ -83,11 +95,11 @@ encodeSynthDefFile :: SynthDefFile -> ByteString
 encodeSynthDefFile (SynthDefFile synthDefs) = mconcat [
      "SCgf"
    , BSL.toStrict $ encode (2 :: Int32)
-   , BSL.toStrict $ encode (toEnum (length synthDefs) :: Int16)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) synthDefs) :: Int16)
    , mconcat $ map encodeSynthDef synthDefs
    ]
 
--- Yes, the 'restN's are ugly, yes i could have used a state monad. Don't judge me.
+-- Yes, the 'restN's are ugly, yes i could have used a state monad. Don't judge!
 decodeSynthDef :: ByteString -> (LiteralSynthDef, {- rest: -} ByteString)
 decodeSynthDef blob =
    let (name :: ByteString, rest) = getPString blob
@@ -134,15 +146,15 @@ int16 - number of variants (V)
 encodeSynthDef :: LiteralSynthDef -> ByteString
 encodeSynthDef (LiteralSynthDef name constants params paramNames uGenSpecs variants) = mconcat [
      encodePString name
-   , BSL.toStrict $ encode (toEnum (length constants) :: Int32)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) constants) :: Int32)
    , mconcat $ map (BSL.toStrict . encode . floatToWord) constants
-   , BSL.toStrict $ encode (toEnum (length params) :: Int32)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) params) :: Int32)
    , mconcat $ map (BSL.toStrict . encode . floatToWord) params
-   , BSL.toStrict $ encode (toEnum (length paramNames) :: Int32)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) paramNames) :: Int32)
    , mconcat $ map encodeParamName paramNames
-   , BSL.toStrict $ encode (toEnum (length uGenSpecs) :: Int32)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) uGenSpecs) :: Int32)
    , mconcat $ map encodeUGenSpec uGenSpecs
-   , BSL.toStrict $ encode (toEnum (length variants) :: Int16)
+   , BSL.toStrict $ encode (toEnum ((length::[a]->Int) variants) :: Int16)
    , mconcat $ map encodeVariantSpec variants
    ]
 
@@ -193,7 +205,7 @@ getUGenSpec blob =
    let (name, rest) = getPString blob
        (calcRate :: CalculationRate, rest2) =
           first ((toEnum) . (fromEnum :: Int8 -> Int) . decode . BSL.fromStrict) $
-             B.splitAt 1 rest
+             BS.splitAt 1 rest
        (numInputs :: Int32, rest3) = getInt32 rest2
        (numOutputs :: Int32, rest4) = getInt32 rest3
 
@@ -207,8 +219,8 @@ encodeUGenSpec :: UGenSpec -> ByteString
 encodeUGenSpec (UGenSpec name calcRate inputSpecs outputSpecs specialIndex) = mconcat [
     encodePString name
    ,BSL.toStrict $ encode $ (toEnum (fromEnum calcRate) :: Int8)
-   ,BSL.toStrict $ encode $ (toEnum (length inputSpecs) :: Int32)
-   ,BSL.toStrict $ encode $ (toEnum (length outputSpecs) :: Int32)
+   ,BSL.toStrict $ encode $ (toEnum ((length::[a]->Int) inputSpecs) :: Int32)
+   ,BSL.toStrict $ encode $ (toEnum ((length::[a]->Int) outputSpecs) :: Int32)
    ,BSL.toStrict $ encode specialIndex
    ,mconcat $ map encodeInputSpec inputSpecs
    ,mconcat $ map encodeOutputSpec outputSpecs
@@ -306,12 +318,60 @@ getNWith n f rest =
    in (head1 : head2, rest3)
    
 getInt32 :: ByteString -> (Int32, ByteString)
-getInt32 blob = first (decode . BSL.fromStrict) $ B.splitAt 4 blob
+getInt32 blob = first (decode . BSL.fromStrict) $ BS.splitAt 4 blob
 
 getInt16 :: ByteString -> (Int16, ByteString)
-getInt16 blob = first (decode . BSL.fromStrict) $ B.splitAt 2 blob
+getInt16 blob = first (decode . BSL.fromStrict) $ BS.splitAt 2 blob
 
 getN4ByteBlocks :: Int32 -> ByteString -> ([ByteString], ByteString)
 getN4ByteBlocks numBlocks blob =
    first (map (BS8.pack) . chunksOf 4 . BS8.unpack) $
-             B.splitAt (4 * fromEnum numBlocks) blob
+             BS.splitAt (4 * fromEnum numBlocks) blob
+
+
+
+uOpToSpecialI :: UnaryOp -> Int16
+uOpToSpecialI uop = toEnum . fromEnum $ uop
+
+specialIToUOp :: Int16 -> UnaryOp
+specialIToUOp specialI = toEnum . fromEnum $ specialI
+
+biOpToSpecialI :: BinaryOp -> Int16
+biOpToSpecialI theBiOp = toEnum . fromEnum $ theBiOp
+
+specialIToBiOp :: Int16 -> BinaryOp
+specialIToBiOp theBiOp = toEnum . fromEnum $ theBiOp
+
+
+sdLitPretty :: LiteralSynthDef -> String
+sdLitPretty synthDef = mconcat [
+    "Constants: ", show $ _synthDefConstants synthDef
+  , "\n"
+--  , show $ zip (_synthDefParameters synthDef) (_synthDefParamNames synthDef)
+  , show $ map (\(ParamName a i)->(a, _synthDefParameters synthDef !! fromIntegral i)) (_synthDefParamNames synthDef)
+  , "\n"
+  , mconcat$
+      (flip map) (zip [0::Int ..] (_synthDefUGens synthDef)) $ \(i,ug) -> mconcat [
+                show i <> " " <> show (_uGenSpec_name ug) <> " - " <> show (_uGenSpec_calcRate ug) <> " (" <> show ((length::[a]->Int) $ _uGenSpec_outputs ug) <> " outputs)"
+               ,"\n"
+               ,mconcat $ map ((<>"\n") . ("  "<>) . showInputSpec) $ _uGenSpec_inputs ug
+               ,case BS8.unpack (_uGenSpec_name ug) of
+                   "UnaryOpUGen" -> mconcat [ "  "
+                      , show ( specialIToUOp (_uGenSpec_specialIndex ug))
+                      , "\n" ]
+                   "BinaryOpUGen" ->
+                      "  " <> show (specialIToBiOp (_uGenSpec_specialIndex ug)) <> "\n"
+
+                   _ -> ""
+               ]
+  ]
+ where
+   showInputSpec :: InputSpec -> String
+   showInputSpec (InputSpec_Constant constantIndex) = mconcat [
+       "Constant: "
+      ,show $ (_synthDefConstants synthDef) !! fromEnum constantIndex
+      ," (index ", show constantIndex, ")"
+      ]
+   showInputSpec (InputSpec_UGen ugNum ugOut) =
+      "UGOut: "<>show (ugNum, ugOut)
+--   showInputSpec x = show x

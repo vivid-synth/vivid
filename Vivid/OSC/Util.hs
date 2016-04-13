@@ -1,11 +1,16 @@
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 {-# LANGUAGE NoRebindableSyntax #-}
+{-# LANGUAGE NoIncoherentInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.OSC.Util (
      align
    , floatToWord
    , wordToFloat
+   , doubleToWord
+   , wordToDouble
    ) where
 
 import Data.Bits ((.&.), complement, Bits)
@@ -24,6 +29,13 @@ floatToWord = coercionThing
 
 wordToFloat :: F.Word32 -> Float
 wordToFloat = coercionThing
+
+doubleToWord :: Double -> F.Word64
+doubleToWord = coercionThing
+
+wordToDouble :: F.Word64 -> Double
+wordToDouble = coercionThing
+
 
 coercionThing :: (F.Storable a, F.Storable b) => a -> b
 coercionThing x = unsafePerformIO $ F.alloca $ \buf -> do

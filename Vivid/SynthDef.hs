@@ -5,12 +5,12 @@
 --   they're playing
 -- 
 --   Usually, you shouldn't be making 'SynthDef's explicitly -- there's a state monad
---   'SDState' which lets you construct synthdefs like so:
+--   'SDBody' which lets you construct synthdefs like so:
 -- 
 --   @
 --   test :: SynthDef
---   test = 'sdNamed' \"testSynthDef\" [(\"note\", 0)] $ do
---      s <- 0.1 'Vivid.UGens.~*' 'Vivid.UGens.sinOsc' (Freq $ 'Vivid.UGens.midiCPS' \"note\")
+--   test = 'sd' (0 ::I \"note\") $ do
+--      s <- 0.1 'Vivid.UGens.~*' 'Vivid.UGens.sinOsc' (freq_ $ 'Vivid.UGens.midiCPS' (V::V \"note\"))
 --      out 0 [s, s]
 --   @
 -- 
@@ -20,79 +20,62 @@
 -- 
 --   You then create a synth from the synthdef like:
 -- 
---   >>> s <- synth "testSynthDef" [("note", 45)]
--- 
---   Or, alternately:
--- 
---   >>> s <- synth test [("note", 45)]
+--   >>> s <- synth test (45 ::I "note")
 -- 
 --   This returns a 'NodeId' which is a reference to the synth, which you can
 --   use to e.g. change the params of the running synth with e.g.
 -- 
---   >>> set s [("note", 38)]
+--   >>> set s (38 ::I "note")
 -- 
 --   Then you can free it (stop its playing) with
 -- 
 --   >>> free s
+-- 
+--   (If you want interop with SClang, use "sdNamed" and "synthNamed")
 
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 {-# LANGUAGE NoRebindableSyntax #-}
 
--- {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
+
+{-# LANGUAGE NoIncoherentInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.SynthDef (
   -- * Synth actions
 
-    synth
-  , set
-  , free
-
   -- * Synth Definition Construction
-
-  , SynthDef(..)
+    SynthDef(..)
   , UGen(..)
   , addUGen
   , addMonoUGen
   , addPolyUGen
   , ToSig(..)
-  , ToSigM(..)
   , Signal(..)
---  , SDState
   , encodeSD
-  , defineSD
+--  , defineSD
   , sd
   , sdNamed
   , sdPretty
   , (?)
-  , play
-  , cmdPeriod
+--  , play
+--  , cmdPeriod
   , DoneAction(..)
   , doneActionNum
   , sdLitPretty
-  , HasSynthRef
   , sdToLiteral
   -- literalToSD
 
   , execState
 
   , getCalcRate
-
-{-
-  -- * Type-defaulting stuff
-  , fromInteger
-  , fromString
-  , fromRational
-  , int
-  , integer
-  , i8
-  , i16
-  , i32
-  , string
--}
 
   -- * Built-in Unit Generator Operations
 
@@ -105,92 +88,57 @@ module Vivid.SynthDef (
   , specialIToBiOp
 
   , module Vivid.SynthDef.Types
+
+  , getSDHashName
+
+  , makeSynthDef
+
+  , shrinkSDArgs
+
+  , SDBody
   ) where
 
-import Vivid.OSC (OSC(..), OSCDatum(..))
-import Vivid.SCServer
-import Vivid.SynthDef.CrazyTypes
+import Vivid.SynthDef.ToSig
 import Vivid.SynthDef.Literally as Literal
 import Vivid.SynthDef.Types
+import Vivid.SynthDef.FromUA (SDBody)
 
-import Control.Applicative
-import Control.Arrow (first, second)
-import Control.Concurrent.STM
-import Control.Monad.State
-import qualified Data.ByteString.Char8 as BS8
+-- import Control.Applicative
+import Control.Arrow (first{-, second-})
+import Control.Monad.State (get, put, modify, execState)
 import Data.ByteString (ByteString)
-import Data.Hashable
+import qualified Data.ByteString.Char8 as BS8 (pack)
+import Data.Hashable (Hashable, hashWithSalt, hash)
 import Data.Int
 import Data.List (nub, elemIndex, find) -- , sortBy)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Monoid
-import qualified Data.Set as Set
+-- import qualified Data.Set as Set
+import Prelude
 
--- once upon a time, we used -XRebindableSyntax to do Float defaulting instead of -XIncoherentInstances -- this is the machinery for that to work:
-{-
-import Prelude hiding (Num(..), fromRational) -- so i can do Float defaulting
-import qualified Prelude as N
-import qualified Data.String (fromString)
-
-fromInteger :: Integer -> Float
-fromInteger = realToFrac
-
-fromRational :: Rational -> Float
-fromRational = N.fromRational
-
-int :: Float -> Int
-int = fromEnum
-
-integer :: Float -> Integer
-integer = toInteger . fromEnum
-
-i8 :: Float -> Int8
-i8 = fromIntegral . int
-
-i16 :: Float -> Int16
-i16 = fromIntegral . int
-
-i32 :: Float -> Int32
-i32 = fromIntegral . int
-
-fromString :: String -> ByteString
-fromString = Data.String.fromString
-
-string :: ByteString -> String
-string = BS8.unpack
--}
-
-sdPretty :: SynthDef -> String
+sdPretty :: SynthDef a -> String
 sdPretty synthDef = unlines $ [
      "Name: " <> show (_sdName synthDef)
    , "Args: " <> show (_sdParams synthDef)
    , "UGens: "
    ] <> map show (Map.toAscList (_sdUGens synthDef))
 
-
+-- | Action to take with a UGen when it's finished
+-- 
+--   This representation will change in the future
 data DoneAction
    = DoNothing
    | FreeEnclosing
+   | DoneAction_AsNum Int
  deriving (Show, Eq)
 
 doneActionNum :: DoneAction -> Float
 doneActionNum = \case
    DoNothing -> 0
    FreeEnclosing -> 2
-
-uOpToSpecialI :: UnaryOp -> Int16
-uOpToSpecialI uop = toEnum . fromEnum $ uop
-
-specialIToUOp :: Int16 -> UnaryOp
-specialIToUOp specialI = toEnum . fromEnum $ specialI
-
-biOpToSpecialI :: BinaryOp -> Int16
-biOpToSpecialI theBiOp = toEnum . fromEnum $ theBiOp
-
-specialIToBiOp :: Int16 -> BinaryOp
-specialIToBiOp theBiOp = toEnum . fromEnum $ theBiOp
+   DoneAction_AsNum n -> toEnum n
 
 --invariants (to check):
 -- param names don't clash
@@ -199,38 +147,68 @@ specialIToBiOp theBiOp = toEnum . fromEnum $ theBiOp
 -- params are all used, and the ones that're used in the graph all exist
 
 
-sdToLiteral :: SynthDef -> Literal.LiteralSynthDef
-sdToLiteral theSD@(SynthDef name params ugens) =
+sdToLiteral :: SynthDef a -> Literal.LiteralSynthDef
+sdToLiteral theSD@(SynthDef name params ugens) = fixAndSimplify $
    LiteralSynthDef
       (case name of
          SDName_Named s -> s
          SDName_Hash -> getSDHashName theSD
          )
-      (gatherConstants $ Map.toAscList ugens)
+      (gatherConstants $ Map.toAscList ugens )
       (map snd params)
       (zipWith (\s i -> ParamName s i) (map fst params) [0..])
       (makeUGenSpecs params $ Map.toAscList ugens)
       []
 
-getSDHashName :: SynthDef -> ByteString
+fixAndSimplify :: Literal.LiteralSynthDef -> Literal.LiteralSynthDef
+fixAndSimplify =
+   replaceBitNot
+
+
+-- Can unit test this by making a complex SD graph that uses
+-- multiple "bitNot"s and checking that it's exactly equal to if
+-- we'd used '& . bitXor 0xFFFFFF'
+
+-- silent:
+-- play $ (0.1 ~* sinOsc (freq_ 440)) >>= \x -> uOp BitNot x >>= \y -> biOp BitAnd y x >>= \z -> out 0 [z,z]
+
+-- | Fix for github.com/supercollider/supercollider/issues/1749
+replaceBitNot :: Literal.LiteralSynthDef -> Literal.LiteralSynthDef
+replaceBitNot lsd@(Literal.LiteralSynthDef name oldConsts params paramNames ugens variants) =
+   case any isBitNot ugens of
+      False -> lsd
+      True ->
+         Literal.LiteralSynthDef name newConsts params paramNames (map replaceIt ugens) variants
+ where
+   -- newConsts :: [Float];  newOneLoc :: Int32
+   (newConsts, toEnum -> negOneLoc) =
+      case elemIndex (-1) oldConsts of
+         Nothing -> (oldConsts <> [(-1)], (length::[a]->Int) oldConsts)
+         Just i -> (oldConsts, i)
+   isBitNot :: UGenSpec -> Bool
+   isBitNot ug =
+         (Literal._uGenSpec_name ug == "UnaryOpUGen")
+      && (Literal._uGenSpec_specialIndex ug == uOpToSpecialI BitNot)
+   replaceIt :: UGenSpec -> UGenSpec
+   replaceIt ugspec = if isBitNot ugspec
+      then UGenSpec
+         "BinaryOpUGen"
+         (Literal._uGenSpec_calcRate ugspec)
+         (Literal._uGenSpec_inputs ugspec <>
+            [InputSpec_Constant negOneLoc])
+         (Literal._uGenSpec_outputs ugspec)
+         (biOpToSpecialI BitXor)
+      else ugspec
+
+getSDHashName :: SynthDef a -> ByteString
 getSDHashName theSD =
    "vivid_" <> (BS8.pack . show . hash) theSD
 
 {-
--- Write it if you wanna:
+-- Anyone, write it for me if you wanna!:
 literalToSD :: Literal.SynthDef -> SD
-literalToSD = undefined
+literalToSD =
 -}
-
-encodeSD :: SynthDef -> ByteString
-encodeSD = encodeSynthDefFile . SynthDefFile . (:[]) . sdToLiteral
-
--- | This is the hash of the UGen graph and params, but not the name!
---   So (re)naming a SynthDef will not change its hash.
-instance Hashable SynthDef where
-   hashWithSalt salt (SynthDef _name params ugens) =
-      hashWithSalt salt . encodeSD $
-         SynthDef (SDName_Named "VIVID FTW") params ugens
 
 gatherConstants :: [(Int, UGen)] -> [Float]
 gatherConstants ugens =
@@ -245,7 +223,7 @@ makeUGenSpecs params ugens = case params of
       (BS8.pack "Control")
       KR
       []
-      (replicate (length params) (OutputSpec KR))
+      (replicate ((length::[a]->Int) params) (OutputSpec KR))
       0
 
    rest = map makeSpec ugens
@@ -263,10 +241,10 @@ makeUGenSpecs params ugens = case params of
                 Constant x -> InputSpec_Constant $ fromIntegral $ fromJust $
                    elemIndex x $ gatherConstants ugens
                 UGOut ugenId outputNum ->
-                   let inputPosition = toEnum ugenId + case params of
-                          [] -> 0
-                          _ -> 1 -- if there are any params, there's a "Control" in
-                                 -- the 0th position
+                   let inputPosition =
+                           -- If there are any params, there's a "Control" in
+                           -- the 0th position:
+                          toEnum ugenId + case params of { [] -> 0 ; _ -> 1 }
                    in InputSpec_UGen inputPosition outputNum
                 Param s -> InputSpec_UGen 0 (indexOfName params s)
                 )
@@ -275,76 +253,59 @@ makeUGenSpecs params ugens = case params of
 
  -- invariant: strings are unique:
 indexOfName :: (Eq a) => [(ByteString, a)] -> ByteString -> Int32
--- in the future: add levens(t|h)ein distance "did you mean?:"
+-- In the future: add levens(t|h)ein distance "did you mean?:"
 indexOfName haystack key =
    let foo = case find ((==key) . fst) haystack of
          Nothing -> error $ "missing param: " <> show key
          Just x -> x
    in fromIntegral $ fromJust $ (flip elemIndex) haystack $ foo
 
--- | Send a synth definition to be loaded on the SC server
--- 
---   Note that this is sort of optional -- if you don't call it, it'll be called the first time
---   you call 'synth' with the SynthDef
-defineSD :: SynthDef -> IO ()
-defineSD synthDef =
-   defineSDIfNeeded synthDef
-
-defineSDIfNeeded :: SynthDef -> IO ()
-defineSDIfNeeded synthDef@(SynthDef name _ _) = do
-   let !_ = scServerState
-   hasBeenDefined <- (((name, hash synthDef) `Set.member`) <$>) $
-      readTVarIO (scServer_definedSDs scServerState)
-   unless hasBeenDefined $ do
-      callAndWaitForDone $ OSC (BS8.pack "/d_recv") [
-           OSC_B $ encodeSD synthDef
-         , OSC_I 0
-         ]
-      atomically $ modifyTVar (scServer_definedSDs scServerState) $
-         ((name, hash synthDef) `Set.insert`)
-
-getFreshUGenGraphId :: SDState Int
+getFreshUGenGraphId :: SDBody' args Int
 getFreshUGenGraphId = do
-   (i:ds, synthDef) <- get
-   put (ds, synthDef)
+   (i:ds, synthDef, argList) <- get
+   put (ds, synthDef, argList)
    return i
 
 -- | Alias for 'addMonoUGen'
-addUGen :: UGen -> SDState Signal
+addUGen :: UGen -> SDBody' args Signal
 addUGen = addMonoUGen
 
 -- | Add a unit generator with one output
-addMonoUGen :: UGen -> SDState Signal
+addMonoUGen :: UGen -> SDBody' args Signal
 addMonoUGen ugen = addPolyUGen ugen >>= \case
    [x] -> return x
-   foo -> error $ "that ugen's not mono!: " <> show ugen <> show foo
+   foo -> error $ "that ugen's not mono!: " <>   show ugen <>  show foo
 
 -- | Polyphonic -- returns a list of 'Signal's.
 --   In the future this might be a tuple instead of a list
-addPolyUGen :: UGen -> SDState [Signal]
-addPolyUGen ugen = do
+addPolyUGen :: UGen -> SDBody' args [Signal]
+addPolyUGen ugen = addPolyUGen' $ ugen
+
+addPolyUGen' :: UGen -> SDBody' args [Signal]
+addPolyUGen' ugen = do
    anId <- getFreshUGenGraphId
-   modify . second $ \synthDef -> synthDef { _sdUGens =
+   modify . (\f (a,b,c)->(a,f b,c)) $ \synthDef -> synthDef { _sdUGens =
       Map.unionWith (\_ -> error "dammit keying broken") (_sdUGens synthDef) $
          Map.singleton anId ugen
       }
    return $ map (UGOut anId) [0.. toEnum (_ugenNumOuts ugen - 1)]
 
 -- | Define a Synth Definition
-sd :: [(String, Float)] -> SDState x -> SynthDef
+sd :: VarList argList => argList -> SDBody' (InnerVars argList) [Signal] -> SynthDef (InnerVars argList)
 sd params theState =
    makeSynthDef SDName_Hash params theState
 
 -- | Define a Synth Definition and give it a name you can refer to from e.g. sclang
-sdNamed :: String -> [(String, Float)] -> SDState x -> SynthDef
+sdNamed :: VarList argList => String -> argList -> SDBody' (InnerVars argList) [Signal] -> SynthDef (InnerVars argList)
 sdNamed name params theState =
    makeSynthDef (SDName_Named $ BS8.pack name) params theState
 
-makeSynthDef :: SDName -> [(String, Float)] -> SDState x -> SynthDef
+makeSynthDef :: VarList argList => SDName -> argList -> SDBody' (InnerVars argList) [Signal] -> SynthDef (InnerVars argList)
 makeSynthDef name params theState =
-   let theSD = SynthDef name (map (first BS8.pack) params) Map.empty
-   in snd $ execState theState ({- id supply: -} [0 :: Int ..], theSD)
-
+   let theSD = SynthDef name (map (first BS8.pack) paramList) Map.empty
+       (paramList, argSet) = makeTypedVarList params
+   in (\(_,b,_)->b) $ execState theState $
+         ({- id supply: -} [0 :: Int ..], theSD, argSet)
 
 -- | Set the calculation rate of a UGen
 -- 
@@ -352,19 +313,19 @@ makeSynthDef name params theState =
 -- 
 --   @
 -- play $ do
---    s0 <- 1 ~+ (lfSaw (Freq 1) ? KR)
---    s1 <- 0.1 ~* lfSaw (Freq $ 220 ~* s0)
+--    s0 <- 1 ~+ (lfSaw (freq_ 1) ? KR)
+--    s1 <- 0.1 ~* lfSaw (freq_ $ 220 ~* s0)
 --    out 0 [s1, s1]
 -- @
 -- 
 --   Mnemonic: \"?\" is like thinking
 -- 
---   In the future, the representation of calculation rates definitely may change
-(?) :: SDState Signal -> CalculationRate -> SDState Signal
+--   In the future, the representation of calculation rates may change
+(?) :: SDBody' args Signal -> CalculationRate -> SDBody' args Signal
 (?) i calcRate = do
    i' <- i
    case i' of
-      UGOut ugId _o -> modify $ second $ \synthDef ->
+      UGOut ugId _o -> modify $ (\f (a,b,c)->(a,f b,c)) $ \synthDef ->
          let ugs = _sdUGens synthDef
              updatedUGens :: Map Int UGen
              updatedUGens = case Map.lookup ugId ugs of
@@ -375,128 +336,31 @@ makeSynthDef name params theState =
       _ -> return ()
    return i'
 
-getCalcRate :: Signal -> SDState CalculationRate
+getCalcRate :: Signal -> SDBody' args CalculationRate
 getCalcRate (Constant _) = return IR
 getCalcRate (Param _) = return KR
 getCalcRate (UGOut theUG _) = do
    -- Note: this assumes updates to the ugen graph are only appends
    -- (so don't break that invariant if you build your own graph by hand!):
-   (_, ugenGraph) <- get
+   (_, ugenGraph, _) <- get
    case Map.lookup theUG (_sdUGens ugenGraph) of
       Just ug -> return $ _ugenCalculationRate ug
       Nothing -> error "that output isn't in the graph!"
 
--- | Given a UGen graph, just start playing it right away.
--- 
---   e.g.
--- 
---   > play $ do
---   >    s <- 0.2 ~* lpf (In whiteNoise) (Freq 440)
---   >    out 0 [s, s]
-play :: SDState a -> IO NodeId
-play x = do
-   let graphWithOut = x
-   let sdWithOut = sd [] graphWithOut
-   synth sdWithOut []
 
-sdLitPretty :: Literal.LiteralSynthDef -> String
-sdLitPretty synthDef = mconcat [
-    "Constants: ", show $ _synthDefConstants synthDef
-  , "\n"
-  , mconcat$
-      (flip map) (zip [0..] (Literal._synthDefUGens synthDef)) $ \(i,ug) -> mconcat [
-                show i <> " " <> show (_uGenSpec_name ug) <> " - " <> show (_uGenSpec_calcRate ug)
-               ,"\n"
-               ,mconcat $ map ((<>"\n") . ("  "<>) . showInputSpec) $ _uGenSpec_inputs ug
-               ,case BS8.unpack (_uGenSpec_name ug) of
-                   "UnaryOpUGen" -> mconcat [ "  "
-                      , show ( specialIToUOp (_uGenSpec_specialIndex ug))
-                      , "\n" ]
-                   "BinaryOpUGen" ->
-                      "  " <> show (specialIToBiOp (_uGenSpec_specialIndex ug)) <> "\n"
+-- | Like 'Vivid.SCServer.shrinkNodeArgs' but for 'SynthDef's
+shrinkSDArgs :: Subset new old => SynthDef old -> SynthDef new
+shrinkSDArgs (SynthDef a b c) = SynthDef a b c
 
-                   _ -> ""
-               ]
-  ]
- where
-   showInputSpec :: InputSpec -> String
-   showInputSpec (InputSpec_Constant constantIndex) = mconcat [
-       "Constant: "
-      ,show $ (_synthDefConstants synthDef) !! fromEnum constantIndex
-      ," (index ", show constantIndex, ")"
-      ]
-   showInputSpec x = show x
 
--- | Immediately stop a synth playing
--- 
---   This can create a \"clipping\" artifact if the sound goes from a high
---   amplitude to 0 in an instant -- you can avoid that with e.g.
---   'Vivid.UGens.lag'
-free :: NodeId -> IO ()
-free (NodeId nodeId) =
-   call $ OSC (BS8.pack "/n_free") [ OSC_I nodeId ]
 
--- | Set the given parameters of a running synth
--- 
---   e.g.
--- 
---   >>> let setTest = sd [("pan", 0.5)] $ out 0 =<< pan2 (In $ 0.1 ~* whiteNoise) (Pos "pan")
---   >>> s <- synth setTest []
---   >>> set s [("pan", -0.5)]
--- 
---   Any parameters not referred to will be unaffected, and any you specify that don't exist
---   will be (silently) ignored
-set :: NodeId -> [(String, Float)] -> IO ()
-set (NodeId nodeId) params =
-   call $ OSC (BS8.pack "/n_set") $ OSC_I nodeId : paramList
- where
-   paramList :: [OSCDatum]
-   paramList = concatMap (\(k,v)->[OSC_S k,OSC_F v]) $
-      map (first BS8.pack) params
+encodeSD :: SynthDef a -> ByteString
+encodeSD =
+   encodeSynthDefFile . SynthDefFile . (:[]) . sdToLiteral
 
--- | Create a real live music-playing synth from a boring, dead SynthDef.
--- 
---   If you haven't defined the SynthDef on the server, this will do it automatically
---   (Note that this may cause jitters in musical timing)
--- 
---   Uses 'HasSynthRef' so that given...
--- 
---   >>> let foo = sdNamed "foo" [] $ out 0 [0.1 ~* whiteNoise]
--- 
---   ...you can create a synth either with...
--- 
---   >>> synth "foo" []
--- 
---   ...or...
--- 
---   >>> synth foo []
--- 
---   Careful!: The SC server doesn't keep track of your nodes for you,
---   so if you do something like...
--- 
---   >>> s <- synth "someSynth" []
---   >>> s <- synth "oops" []           -- 's' is overwritten
--- 
---   ...you've got no way to refer to the first synth you've created, and if you
---   want to stop it you have to 'cmdPeriod'
-synth :: (HasSynthRef a) => a -> [(String, Float)] -> IO NodeId
-synth refHolder params = do
-   case getSynthRef refHolder of
-      Left _ -> return ()
-      Right aSD -> defineSDIfNeeded aSD
-
-   nodeId@(NodeId nn) <- newNodeId
-   let synthName = case getSynthRef refHolder of
-        Left sn -> sn
-        Right (SynthDef (SDName_Named n) _ _) -> n
-        Right theSD@(SynthDef SDName_Hash _ _) -> getSDHashName theSD
-   call $ OSC (BS8.pack "/s_new") $ [
-        OSC_S $ synthName, OSC_I nn
-      , OSC_I 0
-      , OSC_I 1
-      ] <> paramList
-   return nodeId
- where
-   paramList :: [OSCDatum]
-   paramList = concatMap (\(k, v) -> [OSC_S k, OSC_F v]) $
-      map (first BS8.pack) params
+-- | This is the hash of the UGen graph and params, but not the name!
+--   So (re)naming a SynthDef will not change its hash.
+instance Hashable (SynthDef a) where
+   hashWithSalt salt (SynthDef _name params ugens) =
+      hashWithSalt salt . encodeSD $
+         SynthDef (SDName_Named "VIVID FTW") params ugens
