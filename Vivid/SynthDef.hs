@@ -41,7 +41,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 {-# LANGUAGE ViewPatterns #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
@@ -98,8 +98,9 @@ module Vivid.SynthDef (
   , SDBody
   ) where
 
+import Vivid.SC.SynthDef.Literally as Literal
+import Vivid.SC.SynthDef.Types (CalculationRate(..), BinaryOp(..), UnaryOp(..))
 import Vivid.SynthDef.ToSig
-import Vivid.SynthDef.Literally as Literal
 import Vivid.SynthDef.Types
 import Vivid.SynthDef.FromUA (SDBody)
 
@@ -107,7 +108,7 @@ import Vivid.SynthDef.FromUA (SDBody)
 import Control.Arrow (first{-, second-})
 import Control.Monad.State (get, put, modify, execState)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Hashable (Hashable, hashWithSalt, hash)
 import Data.Int
 import Data.List (nub, elemIndex, find) -- , sortBy)
@@ -181,7 +182,7 @@ replaceBitNot lsd@(Literal.LiteralSynthDef name oldConsts params paramNames ugen
          Literal.LiteralSynthDef name newConsts params paramNames (map replaceIt ugens) variants
  where
    -- newConsts :: [Float];  newOneLoc :: Int32
-   (newConsts, toEnum -> negOneLoc) =
+   (newConsts, (toEnum::Int->Int32) -> negOneLoc) =
       case elemIndex (-1) oldConsts of
          Nothing -> (oldConsts <> [(-1)], (length::[a]->Int) oldConsts)
          Just i -> (oldConsts, i)
@@ -190,19 +191,19 @@ replaceBitNot lsd@(Literal.LiteralSynthDef name oldConsts params paramNames ugen
          (Literal._uGenSpec_name ug == "UnaryOpUGen")
       && (Literal._uGenSpec_specialIndex ug == uOpToSpecialI BitNot)
    replaceIt :: UGenSpec -> UGenSpec
-   replaceIt ugspec = if isBitNot ugspec
-      then UGenSpec
+   replaceIt ugspec = case isBitNot ugspec of
+      False -> ugspec
+      True -> UGenSpec
          "BinaryOpUGen"
          (Literal._uGenSpec_calcRate ugspec)
          (Literal._uGenSpec_inputs ugspec <>
             [InputSpec_Constant negOneLoc])
          (Literal._uGenSpec_outputs ugspec)
          (biOpToSpecialI BitXor)
-      else ugspec
 
 getSDHashName :: SynthDef a -> ByteString
 getSDHashName theSD =
-   "vivid_" <> (BS8.pack . show . hash) theSD
+   "vivid_" <> (UTF8.fromString . show . hash) theSD
 
 {-
 -- Anyone, write it for me if you wanna!:
@@ -220,7 +221,7 @@ makeUGenSpecs params ugens = case params of
    _ -> control : rest
  where
    control = UGenSpec
-      (BS8.pack "Control")
+      (UTF8.fromString "Control")
       KR
       []
       (replicate ((length::[a]->Int) params) (OutputSpec KR))
@@ -232,8 +233,8 @@ makeUGenSpecs params ugens = case params of
    makeSpec (_, UGen name calcRate ins numOuts) =
       let (theName, specialIndex) = case name of
              UGName_S s -> (s, 0)
-             UGName_U uop -> (BS8.pack "UnaryOpUGen", uOpToSpecialI uop)
-             UGName_B biop -> (BS8.pack "BinaryOpUGen", biOpToSpecialI biop)
+             UGName_U uop -> (UTF8.fromString "UnaryOpUGen", uOpToSpecialI uop)
+             UGName_B biop -> (UTF8.fromString "BinaryOpUGen", biOpToSpecialI biop)
       in UGenSpec
             theName
             calcRate
@@ -298,11 +299,11 @@ sd params theState =
 -- | Define a Synth Definition and give it a name you can refer to from e.g. sclang
 sdNamed :: VarList argList => String -> argList -> SDBody' (InnerVars argList) [Signal] -> SynthDef (InnerVars argList)
 sdNamed name params theState =
-   makeSynthDef (SDName_Named $ BS8.pack name) params theState
+   makeSynthDef (SDName_Named $ UTF8.fromString name) params theState
 
 makeSynthDef :: VarList argList => SDName -> argList -> SDBody' (InnerVars argList) [Signal] -> SynthDef (InnerVars argList)
 makeSynthDef name params theState =
-   let theSD = SynthDef name (map (first BS8.pack) paramList) Map.empty
+   let theSD = SynthDef name (map (first UTF8.fromString) paramList) Map.empty
        (paramList, argSet) = makeTypedVarList params
    in (\(_,b,_)->b) $ execState theState $
          ({- id supply: -} [0 :: Int ..], theSD, argSet)
@@ -348,7 +349,7 @@ getCalcRate (UGOut theUG _) = do
       Nothing -> error "that output isn't in the graph!"
 
 
--- | Like 'Vivid.SCServer.shrinkNodeArgs' but for 'SynthDef's
+-- | Like 'Vivid.SCServer.shrinkSynthArgs' but for 'SynthDef's
 shrinkSDArgs :: Subset new old => SynthDef old -> SynthDef new
 shrinkSDArgs (SynthDef a b c) = SynthDef a b c
 

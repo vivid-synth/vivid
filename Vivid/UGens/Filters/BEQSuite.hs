@@ -1,6 +1,6 @@
 -- | These UGens only run at audio rate ('AR')
 -- 
---   They also can cause CPU spikes when their parameters are changed
+--   They also can cause CPU spikes when their parameters are changed!
 
 {-# LANGUAGE DataKinds #-}
 
@@ -21,6 +21,7 @@ module Vivid.UGens.Filters.BEQSuite (
    , bPeakEQ
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -52,9 +53,7 @@ bBandStop = makeUGen
    (Vs::Vs '["in", "freq", "bw"])
    (freq_ (1200::Float), bw_ (1::Float))
 
--- | Can cause CPU spikes
--- 
---   This is only in AR
+-- | This is only in AR
 bHiPass :: (Args '["in"] '["freq", "rq"] a) => a -> SDBody a Signal
 bHiPass = makeUGen
    "BHiPass" AR

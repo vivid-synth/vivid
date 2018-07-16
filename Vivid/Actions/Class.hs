@@ -6,6 +6,7 @@
 --   to it!
 
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE Rank2Types #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -13,16 +14,21 @@
 
 module Vivid.Actions.Class (
      VividAction(..)
+   -- , VA
    , callOSCAndSync
+   , oscWSync
    ) where
 
+import Vivid.SC.Server.Types (BufferId, NodeId, SyncId(..))
+import qualified Vivid.SC.Server.Commands as SCCmd
+
 import Vivid.OSC
-import Vivid.SCServer.State (BufferId, NodeId, SyncId(..))
 import Vivid.SynthDef.Types (SynthDef)
 
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8 (pack)
 import Control.Monad.IO.Class (MonadIO)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.UTF8 as UTF8
+import Data.Int
 
 class (Monad m , MonadIO m) => VividAction (m :: * -> *) where
 
@@ -48,7 +54,7 @@ class (Monad m , MonadIO m) => VividAction (m :: * -> *) where
    waitForSync :: SyncId -> m ()
 
    -- | Wait, in seconds
-   wait :: RealFrac n => n -> m ()
+   wait :: Real n => n -> m ()
 
    getTime :: m Timestamp
 
@@ -70,7 +76,20 @@ class (Monad m , MonadIO m) => VividAction (m :: * -> *) where
 callOSCAndSync :: VividAction m => OSC -> m ()
 callOSCAndSync message = do
    now <- getTime
-   sid@(SyncId syncId) <- newSyncId
+   syncId <- newSyncId
    callBS $ encodeOSCBundle $
-      OSCBundle now [Right message, Right $ OSC (BS8.pack "/sync") [OSC_I syncId]]
-   waitForSync sid
+      OSCBundle now [Right message, Right $ SCCmd.sync syncId]
+   waitForSync syncId
+
+-- | 
+-- 
+--   Maybe can dedupe with 'callOSCAndSync'
+oscWSync :: VividAction m => (SyncId -> m ()) -> m ()
+oscWSync actionFromId = do
+   syncId <- newSyncId
+   actionFromId syncId
+   waitForSync syncId
+
+
+-- type VA x = forall m. VividAction m => m x
+

@@ -13,7 +13,7 @@ module Vivid.UGens.SynthControl (
    -- , detectSilence
 ---   , done
 ---   , free__
----   , freeSelf
+     freeSelf
 ---   , freeSelfWhenDone
 ---   , lagControl
 ---   , namedControl
@@ -23,6 +23,10 @@ module Vivid.UGens.SynthControl (
 ---   , trigControl
    ) where
 
+import Vivid.UGens.Args
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
+import Vivid.SynthDef
+import Vivid.SynthDef.FromUA
 
    -- Might not actually need these 2 directly:
 --- control ::
@@ -34,10 +38,19 @@ module Vivid.UGens.SynthControl (
 --- done =
 --- free__ ::
 --- free__ =
---- freeSelf ::
---- freeSelf =
+
+-- | Frees the synth when the trigger changes from non-positive to positive
+-- 
+--   Runs at 'KR'
+freeSelf :: Args '["trigger"] '[] a => a -> SDBody a Signal
+freeSelf = makeUGen
+   "FreeSelf" KR
+   (Vs::Vs '["trigger"])
+   NoDefaults
+
 --- freeSelfWhenDone ::
 --- freeSelfWhenDone =
+
 --- lagControl ::
 --- lagControl =
 --- namedControl ::

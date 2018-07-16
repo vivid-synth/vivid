@@ -23,7 +23,7 @@ module Vivid.SCServer.State (
    ) where
 
 import Vivid.OSC (OSC)
-import Vivid.SCServer.Types
+import Vivid.SC.Server.Types
 import Vivid.SynthDef.Types
 
 import Network.Socket (Socket)

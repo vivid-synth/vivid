@@ -5,7 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 {-# LANGUAGE ViewPatterns #-}
 
 {-# LANGUAGE FlexibleContexts #-}
@@ -34,6 +34,7 @@ module Vivid.UGens.Envelopes (
    ) where
 
 import Vivid.Envelopes
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 -- import Vivid.SynthDef.TypesafeArgs
@@ -46,7 +47,7 @@ import Data.Monoid
 import Data.Proxy
 
 -- | Defaults to 'AR'
-adsrGen :: (Args '[] '["peakLevel", {- "curve", -} "bias", "gate", "doneAction"] as, ToSig attackTime (SDBodyArgs as), ToSig delayTime (SDBodyArgs as), ToSig sustainLevel (SDBodyArgs as), ToSig releaseTime (SDBodyArgs as)) => attackTime -> delayTime -> sustainLevel -> releaseTime -> EnvCurve -> as -> SDBody as Signal
+adsrGen :: (Args '[] '["peakLevel", {- "curve", -} "bias", "gate", "doneAction"] as, ToSig attackTime (SDBodyArgs as), ToSig decayTime (SDBodyArgs as), ToSig sustainLevel (SDBodyArgs as), ToSig releaseTime (SDBodyArgs as)) => attackTime -> decayTime -> sustainLevel -> releaseTime -> EnvCurve -> as -> SDBody as Signal
 adsrGen attackTime decayTime sustainLevel releaseTime curve userArgs = do
    attackTime' <- toSig attackTime
    decayTime' <- toSig decayTime
@@ -88,9 +89,11 @@ adsrGen attackTime decayTime sustainLevel releaseTime curve userArgs = do
 --- dadsrGen =
 
 
+-- TODO: do we need 'fadeSecs' anymore? maybe we should just use 'releaseIn'...
 envGate :: Subset '["gate","fadeSecs"] a => SDBody' a Signal
 envGate = do
-   gate <- (V::V "fadeSecs") ~<= (0::Float)
+     -- Le -- less than or equal
+   gate <- biOp Le (V::V "fadeSecs") (0::Float)
    let theEnv = EnvLiterally {
             _envLiterally_initialVal = gate
           , _envLiterally_releaseNode = Just 1
@@ -138,20 +141,20 @@ envGen_wGate gate timeScale theEnv doneAction = do
 --   Note this won't change after it's created, so if you'd like
 --   to e.g. be able to change the \"freq\" in
 -- 
---   > line (start_ 0, end_ (A::A "freq"))
+--   > line (start_ 0, end_ (V::V "freq"))
 -- 
 --   you should write
 -- 
---   > (A::A "freq") ~* line (start_ 0, end_ 1)
+--   > (V::V "freq") ~* line (start_ 0, end_ 1)
 -- 
 --   instead.
 -- 
 --   Defaults to KR
-line :: (Args '[] '["start","end","secs","doneAction"] a) => a -> SDBody a Signal
+line :: (Args '[] '["start","end","duration","doneAction"] a) => a -> SDBody a Signal
 line = makeUGen
    "Line" AR
-   (Vs::Vs '["start","end","secs","doneAction"])
-   (start_ (0::Float), end_ (0::Float), secs_ (1::Float), doneAction_ (0::Float))
+   (Vs::Vs '["start","end","duration","doneAction"])
+   (start_ (0::Float), end_ (0::Float), duration_ (1::Float), doneAction_ (0::Float))
 
 -- | "Simple linear envelope generator"
 -- 
@@ -163,6 +166,7 @@ linen = makeUGen
    "Linen" KR
    (Vs::Vs '["gate", "attackSecs", "susLevel", "releaseSecs", "doneAction"])
    (gate_ (1::Float), attackTime_ (0.01::Float), susLevel_ (1::Float), releaseTime_ (1::Float), doneAction_ (0::Float))
+
 
 
 -- | Percussive hit
@@ -186,8 +190,8 @@ percGen userArgs = do
 -- | \"Generates an exponential curve from the start value to the end value. Both the start and end values must be non-zero and have the same sign.\"
 -- 
 -- Defaults to KR
-xLine :: (Args '[] '["start","end","secs","doneAction"] a) => a -> SDBody a Signal
+xLine :: (Args '[] '["start","end","duration","doneAction"] a) => a -> SDBody a Signal
 xLine = makeUGen
    "XLine" KR
-   (Vs::Vs '["start","end","secs","doneAction"])
-   (start_ (1::Float), end_ (2::Float), secs_ (1::Float), doneAction_ (0::Float))
+   (Vs::Vs '["start","end","duration","doneAction"])
+   (start_ (1::Float), end_ (2::Float), duration_ (1::Float), doneAction_ (0::Float))

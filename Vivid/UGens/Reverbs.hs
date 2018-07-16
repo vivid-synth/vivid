@@ -11,6 +11,7 @@ module Vivid.UGens.Reverbs (
 ---   , gVerb
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args

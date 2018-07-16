@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
--- {-# LANGUAGE TypeFamilies #-}
+-- {-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -29,12 +29,13 @@ module Vivid.UGens.Maths (
 ---   , wrap
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 -- import Vivid.UGens.Algebraic
 import Vivid.UGens.Args
 
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8 (fromString)
 import Data.Proxy
 
 -- | 
@@ -79,7 +80,7 @@ leastOrMostChange sdName s0 s1 = do
    s0' <- toSig s0
    s1' <- toSig s1
    calcRate <- (maximum::Ord a=>[a]->a) <$> sequence (map getCalcRate [s0', s1'])
-   addUGen $ UGen (UGName_S . BS8.pack $ sdName) calcRate [s0',s1'] 1
+   addUGen $ UGen (UGName_S . UTF8.fromString $ sdName) calcRate [s0',s1'] 1
 
 -- | "Converts a linear range of values to an exponential range of values."
 -- 
@@ -106,7 +107,7 @@ linExp as = do
       KR -> successGraph KR
       _ -> error "linExp: 'in' value must be at AR/KR"
  where
-   successGraph calcRate = (flip ($)) as $ makeUGen
+   successGraph calcRate = ($ as) $ makeUGen
       "LinExp" calcRate
       (Vs::Vs '["in", "srclo", "srchi", "dstlo", "dsthi"])
       (srclo_ (0::Float), srchi_ (1::Float), dstlo_ (1::Float), dsthi_ (2::Float))

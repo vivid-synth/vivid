@@ -28,22 +28,25 @@ module Vivid.Actions.NRT (
    , defaultNRTArgs
    ) where
 
+import qualified Vivid.SC.Server.Commands as SCCmd
+
 import Vivid.Actions.Class
 import Vivid.Actions.IO () -- maybe not in the future
 import Vivid.OSC
+import Vivid.OSC.Bundles (encodeOSCBundles)
 import Vivid.SCServer
 -- import Vivid.SCServer.State
-import Vivid.SynthDef (encodeSD)
+import Vivid.SynthDef (encodeSD, sdToLiteral)
 import Vivid.SynthDef.Types
 
 import Control.Applicative
-import Control.Arrow (first, second)
+-- import Control.Arrow (first, second)
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (get, modify, execStateT, StateT)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS (writeFile)
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Char (toLower)
 import Data.Hashable (hash)
 import qualified Data.Map as Map
@@ -55,18 +58,20 @@ import System.FilePath (takeExtension)
 import System.Process (system)
 import Prelude
 
-type NRT = StateT (Timestamp, Map Timestamp [Either ByteString OSC]) IO
+-- We keep track of the maximum timestamp so that the generated audio file doesn't cut off before a final 'wait' finishes:
+type NRT = StateT (Timestamp, Maximum Timestamp, Map Timestamp [Either ByteString OSC]) IO
 
 instance VividAction NRT where
    callOSC :: OSC -> NRT ()
    callOSC message = do
       now <- getTime
-      modify (second (Map.insertWith (<>) now [Right message]))
+      modify ((\f (a,b,c)->(a,b,f c)) (Map.insertWith (<>) now [Right message]))
 
    callBS :: ByteString -> NRT ()
    callBS message = do
       now <- getTime
-      modify (second (Map.insertWith (<>) now [Left message]))
+      modify $ \(a,b,x) ->
+         (a, b, Map.insertWith (<>) now [Left message] x)
 
    sync :: NRT ()
    sync = return ()
@@ -74,11 +79,13 @@ instance VividAction NRT where
    waitForSync :: SyncId -> NRT ()
    waitForSync _ = return ()
 
-   wait :: (RealFrac n) => n -> NRT ()
-   wait t = modify (first (`addSecs` realToFrac t))
+   wait :: Real n => n -> NRT ()
+   wait t = modify $ \(oldT, maxT, c) ->
+      let newT = oldT `addSecs` realToFrac t
+      in (newT, Maximum newT `max` maxT, c)
 
    getTime :: NRT Timestamp
-   getTime = fst <$> get
+   getTime = (\(t,_,_) -> t) <$> get
 
    newBufferId :: NRT BufferId
    newBufferId = liftIO newBufferId
@@ -91,17 +98,16 @@ instance VividAction NRT where
 
    fork :: NRT () -> NRT ()
    fork action = do
-      (timeOfFork, _) <- get
+      (timeOfFork, oldMaxTime, _) <- get
       action
-      modify (first (\_ -> timeOfFork))
+      modify $ \(_timeAfterFork_ignore, newMaxTime, c) ->
+           -- this 'max' probably isn't necessary:
+         (timeOfFork, newMaxTime `max` oldMaxTime :: Maximum Timestamp, c)
 
    defineSD :: SynthDef a -> NRT ()
    defineSD synthDef = do
-      modify . second $ Map.insertWith mappendIfNeeded (Timestamp 0) [
-           Right $ OSC (BS8.pack "/d_recv") [
-                OSC_B $ encodeSD synthDef
-              , OSC_I 0
-              ]
+      modify . (\f (a,b,c)->(a,b,f c)) $ Map.insertWith mappendIfNeeded (Timestamp 0) [
+           Right $ SCCmd.d_recv [sdToLiteral synthDef] Nothing
          ]
     where
       mappendIfNeeded :: (Ord a) {- , Monoid m)-} => [a] -> [a] -> [a]
@@ -112,8 +118,10 @@ instance VividAction NRT where
 
 runNRT :: NRT a -> IO [OSCBundle]
 runNRT action = do
-   (_, protoBundles) <- execStateT action (Timestamp 0, Map.empty)
-   return [ OSCBundle t as | (t, as) <- Map.toList protoBundles ]
+   (_, Maximum maxTSeen, protoBundles_woLast)
+      <- execStateT action (Timestamp 0, Maximum (Timestamp 0), Map.empty)
+   let protoBundles = Map.insertWith (<>) maxTSeen [] protoBundles_woLast
+   return [ OSCBundle t as | (t, as) <- Map.toAscList protoBundles ]
 
 
 -- | Generate a file of actions that SC can use to do NRT with.
@@ -131,6 +139,9 @@ writeNRTScore path action =
 
 -- | Generate an audio file from an NRT action -- this can write songs far faster
 --   than it would take to play them.
+-- 
+--   This uses 'defaultNRTArgs' for its sample rate, number of channels, etc.
+--   If you want to use args other than the default, use 'writeNRTWith'.
 -- 
 --   The file type is detected from its extension.
 --   The extensions supported at the moment are .aif, .aiff, and .wav
@@ -153,19 +164,33 @@ writeNRTWith nrtArgs fPath nrtActions = do
       ExitSuccess -> return ()
       ExitFailure _ -> error "No 'scsynth' found! Be sure to put it in your $PATH"
    let tempFile = "/tmp/vivid_nrt_" <> (show . hash) contents <> ".osc"
-       !fileType = case map toLower $ takeExtension fPath of
-          ".aif" -> "AIFF"
-          ".aiff" -> "AIFF"
-          ".wav" -> "WAV"
-          _ -> error "The only file extensions we currently understand are .wav, .aif, and .aiff"
+       !fileType =
+          case Map.lookup (map toLower $ takeExtension fPath) extensionMap of
+             Just x -> x
+             Nothing -> error $
+                "The only file extensions we currently understand are: "
+                ++ show (Map.keys extensionMap)
+       extensionMap = Map.fromList [
+            (".aif", "AIFF")
+          , (".aiff", "AIFF")
+          , (".wav", "WAV")
+            -- todo: these formats seem not to work:
+          -- ".flac" -> "FLAC"
+          -- ".ogg" -> "vorbis"
+          ]
 
    BS.writeFile tempFile contents
    ExitSuccess <- system $ mconcat [
         --  ${SHELL}
-        "/bin/sh -c \"scsynth -N "
+        "/bin/sh -c "
+      , " \"" -- Note these beginning and ending quotes
+      , " scsynth"
+      , " -o ", show $ _nrtArgs_numChans nrtArgs
+      , " -N "
       , tempFile
       , " _ '", fPath, "' "
-      , show $ _nrtArgs_sampleRate nrtArgs," ", fileType, " int16\""
+      , show $ _nrtArgs_sampleRate nrtArgs," ", fileType, " int16 "
+      , " \""
       ]
    return ()
 
@@ -173,8 +198,27 @@ writeNRTWith nrtArgs fPath nrtActions = do
 data NRTArgs
    = NRTArgs {
     _nrtArgs_sampleRate :: Int
+   ,_nrtArgs_numChans :: Int
    }
  deriving (Show, Read, Eq, Ord)
 
 defaultNRTArgs :: NRTArgs
-defaultNRTArgs = NRTArgs 44100
+defaultNRTArgs = NRTArgs {
+    _nrtArgs_sampleRate = 48000
+   ,_nrtArgs_numChans = 2
+   }
+
+-- Given an explicit type and tag so we don't accidentally  get the wrong element out of the tuple anywhere:
+newtype Maximum a = Maximum a
+
+instance (Eq a, Ord a) => Ord (Maximum a) where
+   compare (Maximum a) (Maximum b) = compare a b
+   Maximum a <= Maximum b = a <= b
+   Maximum a < Maximum b = a < b
+   Maximum a > Maximum b = a > b
+   Maximum a >= Maximum b = a >= b
+   max (Maximum a) (Maximum b) = Maximum $ max a b
+   min (Maximum a) (Maximum b) = Maximum $ min a b
+
+instance Eq a => Eq (Maximum a) where
+   Maximum a == Maximum b = a == b

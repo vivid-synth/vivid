@@ -3,10 +3,11 @@
 
 -- {-# LANGUAGE ConstraintKinds -}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs, NoMonoLocalBinds #-}
+-- {-# LANGUAGE GADTSyntax, NoMonoLocalBinds #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -14,7 +15,7 @@
 -- {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 {-# LANGUAGE TypeOperators #-}
 -- Needed for a nested type family instance:
 {-# LANGUAGE UndecidableInstances #-}
@@ -153,9 +154,9 @@ type family SetEqual (a :: [x]) (b :: [x]) :: Bool where
    SetEqual a b = SubsetBoolToBool (IsSubsetOf a b) && SubsetBoolToBool (IsSubsetOf b a)
 
 
+data Variable (a :: Symbol) =
+   KnownSymbol a => V
 
-data Variable a  where
-   V :: KnownSymbol a => Variable a
 
 data Vs (a :: [Symbol]) = Vs
 
@@ -194,8 +195,8 @@ addVarToSet _ _ = VarSet
 emptyVarSet :: VarSet '[]
 emptyVarSet = VarSet
 
-data I (x :: Symbol) where
-   I :: (KnownSymbol x) => Float -> I x
+data I (x :: Symbol) =
+   KnownSymbol x => I Float
 
 instance (KnownSymbol s) => Show (I s) where
    show (I f) =

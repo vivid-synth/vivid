@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -14,9 +14,11 @@ module Vivid.UGens.Conversion (
 ---   , t2k
    ) where
 
+
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8
 
 
 -- | Convert an audio rate signal to a control rate signal
@@ -47,7 +49,7 @@ to fromRate toRate = \s -> do
          ]
    addUGen $ UGen (UGName_S letters) toRate [s'] 1
  where
-   letters = BS8.pack [calcLetter fromRate,'2',calcLetter toRate]
+   letters = UTF8.fromString [calcLetter fromRate,'2',calcLetter toRate]
    calcLetter = \case
       KR -> 'K'
       AR -> 'A'

@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -13,6 +13,7 @@ module Vivid.UGens.Dynamics (
    , normalizer
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 --- import Vivid.SynthDef.TypesafeArgs
@@ -30,7 +31,7 @@ compander = makeUGen
 
 -- | Note this can only run at "AR"
 -- 
---   \"secs\" is the lookahead time -- if you're coming from SC you can use 'Vivid.UGens.Args.dur_'
+--   \"secs\" is the lookahead time -- if you're coming from SC you can use 'Vivid.UGens.Args.dur_' for consistency
 limiter :: (Args '["in"] '["level", "secs"] a) => a -> SDBody a Signal
 limiter = makeUGen
    "Limiter" AR

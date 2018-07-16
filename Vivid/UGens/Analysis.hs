@@ -35,6 +35,7 @@ module Vivid.UGens.Analysis (
    -- , slope
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -77,13 +78,21 @@ ampComp = makeUGen
 --- keyTrack ::
 --- keyTrack =
 
--- | "This is a better pitch follower than ZeroCrossing, but more costly of CPU. For most purposes the default settings can be used and only in needs to be supplied. Pitch returns two values (via an Array of OutputProxys, see the OutputProxy help file), a freq which is the pitch estimate and hasFreq, which tells whether a pitch was found. Some vowels are still problematic, for instance a wide open mouth sound somewhere between a low pitched short 'a' sound as in 'sat', and long 'i' sound as in 'fire', contains enough overtone energy to confuse the algorithm."
+-- | "This is a better pitch follower than ZeroCrossing, but more costly of CPU. For most purposes the default settings can be used and only in needs to be supplied."
+--   
+--   "[This function] returns two values [...], a freq which is the pitch estimate and hasFreq, which tells whether a pitch was found."
+--
+--   Note -- as this returns a 2-tuple of 'Signal's -- that you may need to be careful not
+--   to accidentally use functions from the Foldable instance for (,) with the return
+--   value of 'pitch'.
+-- 
+--   "Some vowels are still problematic, for instance a wide open mouth sound somewhere between a low pitched short 'a' sound as in 'sat', and long 'i' sound as in 'fire', contains enough overtone energy to confuse the algorithm."
 -- 
 --   "None of these settings are time variable."
 -- 
 --   Can only run at "KR"
-pitch :: (Args '["in"] '["initFreq", "minFreq", "maxFreq", "execFreq", "maxBinsPerOctave", "median", "ampThreshold", "peakThreshold", "downSample", "clar"] a) => a -> SDBody a Signal
-pitch = makeUGen
+pitch :: (Args '["in"] '["initFreq", "minFreq", "maxFreq", "execFreq", "maxBinsPerOctave", "median", "ampThreshold", "peakThreshold", "downSample", "clar"] a) => a -> SDBody a (Signal, Signal)
+pitch = ((\[a,b]->(a,b)) <$>) . makePolyUGen 2
    "Pitch" KR
    (Vs::Vs '["in", "initFreq", "minFreq", "maxFreq", "execFreq", "maxBinsPerOctave", "median", "ampThreshold", "peakThreshold", "downSample", "clar"])
    (initFreq_ (440::Float), minFreq_ (60 ::Float), maxFreq_ (4000 ::Float), execFreq_ (100::Float), maxBinsPerOctave_ (16::Float), median_ (1::Float), ampThreshold_ (0.01::Float), peakThreshold_ (0.5::Float), downSample_ (1::Float), clar_ (0::Float))

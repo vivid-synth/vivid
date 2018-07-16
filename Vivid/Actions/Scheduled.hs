@@ -57,7 +57,7 @@ instance VividAction Scheduled where
    waitForSync :: SyncId -> Scheduled ()
    waitForSync _ = return () -- always right?
 
-   wait :: (RealFrac n) => n -> Scheduled ()
+   wait :: Real n => n -> Scheduled ()
    wait t = modify (`addSecs` realToFrac t)
 
    getTime :: Scheduled Timestamp

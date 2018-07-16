@@ -2,6 +2,7 @@
 --   names as in "Control.Arrow"
 
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 
 module Vivid.ByteBeat (
      (&&&)
@@ -15,7 +16,9 @@ module Vivid.ByteBeat (
    , baseThing
    ) where
 
+
 import Vivid.SynthDef
+-- import Vivid.SynthDef.ToSig
 import Vivid.UGens.Algebraic
 import Vivid.UGens.Args
 import Vivid.UGens.Generators.Deterministic (impulse)
@@ -23,9 +26,13 @@ import Vivid.UGens.Triggers (pulseCount)
 
 (&&&), (|||), (>>>), (<<<)
    :: (ToSig s0 a, ToSig s1 a) => s0 -> s1 -> SDBody' a Signal
+-- | Bitwise @and@
 (&&&) = biOp BitAnd
+-- | Bitwise @or@
 (|||) = biOp BitOr
+-- | Bit shift right
 (>>>) = biOp ShiftRight
+-- | Bit shift left
 (<<<) = biOp ShiftLeft
 -- Also 'xor' from Vivid.UGens.Algebraic
 

@@ -35,13 +35,14 @@ module Vivid.UGens.Demand (
 ---   , tDuty
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.UGens.Args
 import Vivid.SynthDef
 -- import Vivid.SynthDef.TypesafeArgs
 import Vivid.SynthDef.FromUA
 
 -- import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8
+import qualified Data.ByteString.UTF8 as UTF8
 import Data.Proxy
 
 -- | This correctly decodes/encodes to OSC:
@@ -57,7 +58,7 @@ dbrown :: Args '[] '["lo","hi","step","length"] a => a -> SDBody a Signal
 dbrown = demandBrownian "Dbrown"
 
 -- | Defaults to 'KR'
-demand :: Args '[] '["trigger","reset","ugen"] a => a -> SDBody a Signal
+demand :: Args '["trigger","reset","ugen"] '[] a => a -> SDBody a Signal
 demand = makeUGen
    "Demand" KR
    (Vs::Vs '["trigger","reset","ugen"])
@@ -84,7 +85,7 @@ diwhite = demandWhite "Diwhite"
 --- dpoll ::
 --- dpoll =
 
--- | \"'dxrand' never plays the same value twice, whereas 'drand' chooses any value in the list\"
+-- | \"'dxrand' never plays the same value twice, whereas drand chooses any value in the list\"
 drand :: (Args '[] '["repeats"] a, ToSig s (SDBodyArgs a)) => a -> [s] -> SDBody a Signal
 drand = drawFromList "Drand"
 
@@ -100,7 +101,7 @@ drawFromList :: (Args '[] '["repeats"] a, ToSig s (SDBodyArgs a)) => String -> a
 drawFromList ugName args sigs = do
    sigs' <- mapM toSig sigs
    reps <- uaArgValWDefault (1::Float) args (Proxy::Proxy "repeats")
-   addUGen $ UGen (UGName_S $ BS8.pack ugName) DR (reps:sigs') 1
+   addUGen $ UGen (UGName_S $ UTF8.fromString ugName) DR (reps:sigs') 1
 
 dser :: (Args '[] '["repeats"] a, ToSig s (SDBodyArgs a)) => a -> [s] -> SDBody a Signal
 dser = drawFromList "Dser"
@@ -134,7 +135,7 @@ demandWhite ugName = makeUGen
 --- dwrand ::
 --- dwrand =
 
--- | \"'dxrand' never plays the same value twice, whereas 'drand' chooses any value in the list\"
+-- | \"dxrand never plays the same value twice, whereas 'drand' chooses any value in the list\"
 dxrand :: (Args '[] '["repeats"] a, ToSig s (SDBodyArgs a)) => a -> [s] -> SDBody a Signal
 dxrand = drawFromList "Dxrand"
 

@@ -14,7 +14,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 {-# LANGUAGE TypeOperators #-}
 
 
@@ -24,11 +24,12 @@
 
 module Vivid.UGens.Args where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 -- import Vivid.SynthDef.TypesafeArgs (getSymbolVals)
 
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8 (fromString)
 import qualified Data.Map as Map
 -- import Data.Monoid
 -- import GHC.TypeLits
@@ -106,6 +107,10 @@ bus_ = UA . toSig
 bw_ :: ToSig s as => s -> UA "bw" as
 bw_ = UA . toSig
 
+-- Maybe should actually just be "bw"?:
+bwFreq_ :: ToSig s as => s -> UA "bwFreq" as
+bwFreq_  = UA . toSig
+
 bwr_ :: ToSig s as => s -> UA "bwr" as
 bwr_ = UA . toSig
 
@@ -177,6 +182,9 @@ decayTime_ = decaySecs_
 decaytime_ :: ToSig s as => s -> UA "decaySecs" as
 decaytime_ = decaySecs_
 
+default_ :: ToSig s as => s -> UA "default" as
+default_ = UA . toSig
+
 -- | Alias of 'delaySecs_' for SC compatibility
 delay_ :: ToSig s as => s -> UA "delaySecs" as
 delay_ = delaySecs_
@@ -201,6 +209,9 @@ depth_ = UA . toSig
 depthVariation_ :: ToSig s as => s -> UA "depthVariation" as
 depthVariation_ = UA . toSig
 
+div_ :: ToSig s as => s -> UA "div" as
+div_ = UA . toSig
+
 dn_ :: ToSig s as => s -> UA "dn" as
 dn_ = UA . toSig
 
@@ -216,9 +227,9 @@ dsthi_ = UA . toSig
 dstlo_ :: ToSig s as => s -> UA "dstlo" as
 dstlo_ = UA . toSig
 
--- | Alias of 'secs_'
-dur_ :: ToSig s as => s -> UA "secs" as
-dur_ = secs_
+-- | Alias of 'duration_'
+dur_ :: ToSig s as => s -> UA "duration" as
+dur_ = duration_
 
 duration_ :: ToSig s as => s -> UA "duration" as
 duration_ = UA . toSig
@@ -243,6 +254,9 @@ fftSize_ = UA . toSig
 fftsize_ :: ToSig s as => s -> UA "fftSize" as
 fftsize_ = fftSize_
 
+formFreq_ :: ToSig s as => s -> UA "formFreq" as
+formFreq_ = UA . toSig
+
 frames_ :: ToSig s as => s -> UA "numFrames" as
 frames_ = numFrames_
 
@@ -261,6 +275,9 @@ freq_  = UA . toSig
 
 friction_ :: ToSig s as => s -> UA "friction" as
 friction_ = UA . toSig
+
+fundFreq_ :: ToSig s as => s -> UA "fundFreq" as
+fundFreq_ = UA . toSig
 
 g_ :: ToSig s as => s -> UA "g" as
 g_ = UA . toSig
@@ -590,8 +607,24 @@ makeMakeUGen addUGenF numOuts sdName calcRate tagList defaultArgs = \userSupplie
    theArgList <- Map.fromList <$> fromUAWithDefaults (DefaultArgs defaultArgs) (OverwritingArgs userSupplied)
    let signals =
           map (\k -> Map.findWithDefault (error $ "that's weird (likely a ugen with a typo in 'Vs'): "++sdName++":"++k) k theArgList) $ getSymbolVals tagList
-   addUGenF $ UGen (UGName_S (BS8.pack sdName)) calcRate (signals :: [Signal]) numOuts
+   addUGenF $ UGen (UGName_S (UTF8.fromString sdName)) calcRate (signals :: [Signal]) numOuts
 
+makeMonoUGen, makeUGen :: (
+     GetSymbolVals (Vs tags)
+   , FromUA optional
+   , FromUA userSupplied
+   , SDBodyArgs optional ~ SDBodyArgs userSupplied
+   , SDBodyArgs optional ~ args
+   ) => String -> CalculationRate -> Vs tags -> optional -> (userSupplied -> SDBody' args Signal)
 makeMonoUGen = makeMakeUGen addMonoUGen 1
-makePolyUGen n = makeMakeUGen addPolyUGen n
 makeUGen = makeMonoUGen
+
+makePolyUGen :: (
+     GetSymbolVals (Vs tags)
+   , FromUA optional
+   , FromUA userSupplied
+   , SDBodyArgs optional ~ SDBodyArgs userSupplied
+   , SDBodyArgs optional ~ args
+   ) => Int -> String -> CalculationRate -> Vs tags -> optional -> (userSupplied -> SDBody' args [Signal])
+makePolyUGen n = makeMakeUGen addPolyUGen n
+

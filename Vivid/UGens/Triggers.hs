@@ -15,12 +15,12 @@ module Vivid.UGens.Triggers (
      -- In UGens.Buffer:
    -- , phasor
    , pulseCount
----   , pulseDivider
+   , pulseDivider
 ---   , sendReply
 ---   , sendTrig
 ---   , setResetFF
 ---   , stepper
----   , sweep
+   , sweep
      -- in UGens.Conversions:
    -- , t2a
    -- , t2k
@@ -38,6 +38,7 @@ module Vivid.UGens.Triggers (
 ---   , trig1
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -53,14 +54,28 @@ latch = makeUGen
    (Vs::Vs '["in", "trigger"])
    NoDefaults
 
-pulseCount :: (Args '[] '["trigger", "reset"] a) => a -> SDBody a Signal
+pulseCount :: Args '[] '["trigger", "reset"] a => a -> SDBody a Signal
 pulseCount = makeUGen
    "PulseCount" AR
    (Vs::Vs '["trigger", "reset"])
    (trig_ (0::Float), reset_ (0::Float))
 
---- pulseDivider ::
---- pulseDivider =
+-- | \"Outputs one inpulse each time it receives a certain number of triggers at its input\"
+-- 
+--   The trigger \"can be any signal. A trigger happens when the signal changes from
+--   non-positive to positive\"
+-- 
+--   \"div\" is the number of pulses to divide by. Default is 2.
+-- 
+--   \"start\" is the starting value of the count
+-- 
+--   Can be 'AR' or 'KR'
+pulseDivider :: Args '["trigger"] '["div", "start"] a => a -> SDBody a Signal
+pulseDivider = makeUGen
+   "PulseDivider" AR
+   (Vs::Vs '["trigger", "div", "start"])
+   (div_ (2::Float), start_ (0::Float))
+
 --- sendReply ::
 --- sendReply =
 --- sendTrig ::
@@ -69,8 +84,13 @@ pulseCount = makeUGen
 --- setResetFF =
 --- stepper ::
 --- stepper =
---- sweep ::
---- sweep =
+
+sweep :: Args '["trigger"] '["rate"] a => a -> SDBody a Signal
+sweep = makeUGen
+   "Sweep" AR
+   (Vs::Vs '["trigger", "rate"])
+   (rate_ (1::Float))
+
 --- tChoose ::
 --- tChoose =
 --- tExpRand ::

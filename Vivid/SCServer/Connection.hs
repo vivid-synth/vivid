@@ -20,7 +20,10 @@ module Vivid.SCServer.Connection (
    , waitForSync_io_noGC
    ) where
 
+import Vivid.SC.Server.Commands as SCCmd
+
 import Vivid.OSC
+import Vivid.OSC.Bundles (initTreeCommand)
 import Vivid.SCServer.State
 
 import Network.Socket (
@@ -54,13 +57,14 @@ import Data.Monoid
 --   computation is done upfront
 -- 
 --   The 'HostName' is the ip address or "localhost". The 'ServiceName' is the port
-createSCServerConnection :: SCConnectConfig -> IO Socket
+createSCServerConnection :: SCConnectConfig -> IO (Either String Socket)
 createSCServerConnection connConfig = do
    let !_ = scServerState
    shouldMakeSock scServerState >>= \case
       True -> do
-         makeSock scServerState connConfig
-      False -> error "Too late -- connection already established. Disconnect first."
+         Right <$> makeSock scServerState connConfig
+      False ->
+         pure $ Left "Too late -- connection already established. Disconnect first."
 
 -- | Explicitly close Vivid's connection to a SC server.
 -- 
@@ -161,9 +165,9 @@ connectToSCServer scConnectConfig = withSocketsDo $ do
    listener <- forkIO $ startMailbox (_scConnectConfig_serverMessageFunction scConnectConfig) s
    let firstSyncID = toEnum $ numberOfSyncIdsToDrop - 2
    _ <- send s $ encodeOSCBundle $ OSCBundle (Timestamp 0) [
-        Right $ OSC "/dumpOSC" [OSC_I 1]
+        Right $ SCCmd.dumpOSC DumpOSC_Parsed
       , Right $ initTreeCommand
-      , Right $ OSC "/sync" [OSC_I firstSyncID]
+      , Right $ SCCmd.sync (SyncId firstSyncID)
       ]
    waitForSync_io (SyncId firstSyncID)
    return (s, listener)
@@ -182,15 +186,16 @@ waitForSync_io_noGC syncId = do
    return ()
 
 startMailbox :: (OSC -> IO ()) -> Socket -> IO ()
-startMailbox otherMessageFunction s = forever $ recv {- From -} s 1024 >>= \(msg{- , _ -}) ->
+startMailbox otherMessageFunction s = forever $ recv {- From -} s 65536 >>= \(msg{- , _ -}) ->
    case decodeOSC msg of
-      OSC "/synced" [OSC_I theSyncId] -> do
+      Right (OSC "/synced" [OSC_I theSyncId]) -> do
          syncBox <- getMailboxForSyncId (SyncId theSyncId)
          tryPutMVar syncBox () >>= \case
             True -> return ()
             False ->
                putStrLn $ "That's weird: we got the same syncId twice: " ++ show theSyncId
-      x -> otherMessageFunction x
+      Right x -> otherMessageFunction x
+      Left e -> putStrLn $ "ERROR DECODING OSC: " ++ show (msg, e)
 
 -- | Print all messages other than \"/done\"s
 defaultMessageFunction :: OSC -> IO ()

@@ -21,7 +21,7 @@ module Vivid.UGens.Filters.Linear (
    , hpz1
    , hpz2
    , integrator
----   , klank
+   , klank
    , lag
    , lag2
    , lag3
@@ -45,10 +45,13 @@ module Vivid.UGens.Filters.Linear (
    ) where
 
 -- import Vivid.OSC
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.UGens.Args
 import Vivid.SynthDef.FromUA
 
+import qualified Data.ByteString.UTF8 as UTF8
+import Data.Monoid
 import Data.Proxy
 
 -- import Data.ByteString (ByteString)
@@ -126,33 +129,73 @@ hpz1 = makeUGen
    (Vs::Vs '["in"])
    NoDefaults
 
-hpz2 :: (Args '["in"] '[] a) => a -> SDBody a Signal
+hpz2 :: Args '["in"] '[] a => a -> SDBody a Signal
 hpz2 = makeUGen
    "HPZ2" AR
    (Vs::Vs '["in"])
    NoDefaults
 
-integrator :: (Args '["in"] '["coef"] a) => a -> SDBody a Signal
+integrator :: Args '["in"] '["coef"] a => a -> SDBody a Signal
 integrator = makeUGen
    "Integrator" AR
    (Vs::Vs '["in", "coef"])
    (coef_ (1::Float))
 
---- klank ::
---- klank =
+
+-- todo: i want either 'freqScale' or a way to pass in params to the list of frequencies
+
+-- | \"Klank is a bank of fixed frequency resonators which can be used to simulate the resonant modes of an object. Each mode is given a ring time, which is the time for the mode to decay by 60 dB\"
+-- 
+--   The 'in_' argument is \"the excitation input to the resonant filter bank\"
+-- 
+--   Each tuple in the list argument is a triple of frequency, amplitude, and ring time
+-- 
+--   Can only run in 'AR'
+klank :: Args '["in"] '[] a => a -> [(Float, Float, Float)] -> SDBody a Signal
+klank args resonators = do
+   in' <- uaArgVal args (Proxy::Proxy "in")
+   addMonoUGen $ UGen (UGName_S (UTF8.fromString "Klank")) AR (outs in') 1
+ where
+   outs inThing = [
+        inThing
+         -- These may be added as parameters in the future:
+      , Constant 1 -- freqscale
+      , Constant 0 -- freqoffset
+      , Constant 1 -- decayscale
+      ] <> concat [ map Constant [a,b,c] | (a,b,c) <- resonators ]
+
+{-
+3 "Klank" - AR (1 outputs)
+  UGOut: (2,0) -- "excitation input" thing
+  Constant: 1.0 (index 3) -- freqscale
+  Constant: 0.0 (index 4) -- freqoffset
+  Constant: 1.0 (index 5) -- decayscale
+
+  Constant: 220.0 (index 6) -- frequency
+  Constant: 0.5 (index 7)   -- amplitude
+  Constant: 1.0 (index 8)   -- rungTime
+
+  Constant: 440.0 (index 9)
+  Constant: 1.0 (index 8)
+  Constant: 1.0 (index 8)
+
+  Constant: 880.0 (index 10)
+  Constant: 0.5 (index 7)
+  Constant: 1.0 (index 8)
+-}
 
 -- | The \"lagSecs\" arg is the same as the \"lagTime\" arg in SC
 --   (you can use 'Vivid.UGens.Args.lagTime_' if you like)
 --
 --   The calculation rate of this is whatever its \"in\" is (cool, right?)
-lag :: (Args '["in"] '["lagSecs"] a) => a -> SDBody a Signal
+lag :: Args '["in"] '["lagSecs"] a => a -> SDBody a Signal
 lag as = do
    makeThing =<< getCalcRate =<< uaArgVal as (Proxy::Proxy "in")
  where
-   makeThing calcRate = (flip ($)) as $ makeUGen
+   makeThing calcRate = ($ as) $ makeUGen
       "Lag" calcRate
       (Vs::Vs '["in", "lagSecs"])
-      (lagTime_ (0.1::Float))
+      (lagSecs_ (0.1::Float))
 
 -- | 'lag2 (in_ x)' is equal to 'lag (in_ (lag (in_ x)))'
 --
@@ -161,7 +204,7 @@ lag2 :: (Args '["in"] '["lagSecs"] a) => a -> SDBody a Signal
 lag2 as =
    makeThing =<< getCalcRate =<< uaArgVal as (Proxy::Proxy "in")
  where
-   makeThing calcRate = (flip ($)) as $ makeUGen
+   makeThing calcRate = ($ as) $ makeUGen
       "Lag2" calcRate
       (Vs::Vs '["in", "lagSecs"])
       (lagTime_ (0.1::Float))
@@ -173,7 +216,7 @@ lag3 :: (Args '["in"] '["lagSecs"] a) => a -> SDBody a Signal
 lag3 as =
    makeThing =<< getCalcRate =<< uaArgVal as (Proxy::Proxy "in")
  where
-   makeThing calcRate = (flip ($)) as $ makeUGen
+   makeThing calcRate = ($ as) $ makeUGen
       "Lag3" calcRate
       (Vs::Vs '["in", "lagSecs"])
       (lagTime_ (0.1::Float))

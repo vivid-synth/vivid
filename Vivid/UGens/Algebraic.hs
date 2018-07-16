@@ -5,7 +5,7 @@
 
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -17,10 +17,13 @@ module Vivid.UGens.Algebraic (
    , (~*)
    , (~**)
    , (~/)
+
+{- -- removed these to be compatible with tidal, which also uses some of these:
    , (~>)
    , (~>=)
    , (~<)
    , (~<=)
+-}
    , binaryOp
    , biOp
    , unaryOp
@@ -59,6 +62,7 @@ infixl 7 ~/
 (~/) :: (ToSig i0 a, ToSig i1 a) => i0 -> i1 -> SDBody' a Signal
 (~/) = binaryOp FDiv
 
+{-
 infix 4 ~>
 -- | Test signals for left greater than right
 (~>) :: (ToSig i0 a, ToSig i1 a) => i0 -> i1 -> SDBody' a Signal
@@ -78,6 +82,7 @@ infix 4 ~<=
 -- | Test signals for left less than or equal to right
 (~<=) :: (ToSig i0 a, ToSig i1 a) => i0 -> i1 -> SDBody' a Signal
 (~<=) = binaryOp Le
+-}
 
 infixl 6 ~-
 -- | Subtract signals

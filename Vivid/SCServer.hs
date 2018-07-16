@@ -1,18 +1,17 @@
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-{-# LANGUAGE NoRebindableSyntax #-}
-
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
+-- {-# LANGUAGE BangPatterns #-}
+-- {-# LANGUAGE FlexibleInstances #-}
+-- {-# LANGUAGE InstanceSigs #-}
+-- {-# LANGUAGE KindSignatures #-}
+-- {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+-- {-# LANGUAGE ScopedTypeVariables #-}
+-- {-# LANGUAGE TypeSynonymInstances #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoRebindableSyntax #-}
 {-# LANGUAGE NoUndecidableInstances #-}
 
 
@@ -29,7 +28,9 @@ module Vivid.SCServer (
    -- * Nodes
 
    , NodeId(..)
-   , Node(..)
+   , Synth(..)
+   , Group(..)
+   , defaultGroup
 
    -- * Buffers
 
@@ -39,6 +40,13 @@ module Vivid.SCServer (
    , newBuffer
    , newBufferFromFile
    , saveBuffer
+   , writeBuffer
+   , writeBufferWith
+   , WriteBufArgs(..)
+   , defaultWBArgs
+   , closeBuf
+   , closeBuffer
+   , zeroBuf
 
    -- * Manual management of SC server connection
 
@@ -49,17 +57,22 @@ module Vivid.SCServer (
 
    , module Vivid.SCServer.State
 
-   , shrinkNodeArgs
+   , shrinkSynthArgs
 
    ) where
 
-import Vivid.Actions.Class
 import Vivid.OSC
+import Vivid.OSC.Bundles (initTreeCommand)
+import qualified Vivid.SC.Server.Commands as SCCmd
+import Vivid.SC.Server.Types (Group(..))
+import qualified Vivid.SC.Server.Commands as SCCmd
+
+import Vivid.Actions.Class
 import Vivid.SCServer.Connection
 import Vivid.SCServer.State
 import Vivid.SCServer.Types
 
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString.UTF8 as UTF8 (fromString)
 import Data.Int (Int32)
 -- BBP hack:
 import Prelude
@@ -71,8 +84,8 @@ import Prelude
 --   Corresponds to the cmd-. \/ ctrl-.  key command in the SuperCollider IDE
 cmdPeriod :: (VividAction m) => m ()
 cmdPeriod = do
-   callOSC $ OSC "/g_freeAll" [OSC_I 0]
-   callOSC $ OSC "/clearSched" []
+   callOSC $ SCCmd.g_freeAll [NodeId 1] -- 1 instead of 0 is temp! (is it? 1 is default group...)
+   callOSC $ SCCmd.clearSched
    initTree
    
 -- | Alias of 'cmdPeriod'
@@ -90,17 +103,12 @@ initTree = callOSC initTreeCommand
 -- 
 --   Note that this is synchronous -- it doesn't return until the buffer is allocated
 --   (in theory, this could hang if e.g. the UDP packet is lost)
-newBuffer :: (VividAction m) => Int32 -> m BufferId
+newBuffer :: VividAction m => Int32 -> m BufferId
 newBuffer bufferLength = do
-   bufId@(BufferId bufIdInt) <- newBufferId
-   syncId@(SyncId syncIdInt) <- newSyncId
-   callOSC $ OSC "/b_alloc" [
-       OSC_I bufIdInt
-      ,OSC_I bufferLength
-      ,OSC_I 1
-      , OSC_B . encodeOSC $ OSC "/sync" [OSC_I syncIdInt]
-      ]
-   waitForSync syncId
+   bufId <- newBufferId
+   oscWSync $ \syncId ->
+      callOSC $
+         SCCmd.b_alloc bufId bufferLength 1 (Just $ SCCmd.sync syncId)
    return bufId
 
 -- | Make a buffer and fill it with sound data from a file
@@ -112,16 +120,9 @@ newBuffer bufferLength = do
 --   Note that like "makeBuffer" this is synchronous
 newBufferFromFile :: (VividAction m) => FilePath -> m BufferId
 newBufferFromFile fPath = do
-   bufId@(BufferId bufIdInt) <- newBufferId
-   syncId@(SyncId syncIdInt) <- newSyncId
-   callOSC $ OSC  "/b_allocRead" [
-        OSC_I bufIdInt
-      , OSC_S (BS8.pack fPath)
-      , OSC_I 0
-      , OSC_I (-1)
-      , OSC_B . encodeOSC $ OSC "/sync" [OSC_I syncIdInt]
-      ]
-   waitForSync syncId
+   bufId <- newBufferId
+   oscWSync $ \syncId -> callOSC $
+      SCCmd.b_allocRead bufId fPath 0 Nothing (Just $ SCCmd.sync syncId)
    return bufId
 
 makeBufferFromFile :: (VividAction m) => FilePath -> m BufferId
@@ -132,18 +133,62 @@ makeBuffer = newBuffer
 
 -- | Write a buffer to a file
 -- 
+--   Alias of 'writeBuffer'
+-- 
 --   Synchronous.
 saveBuffer :: (VividAction m) => BufferId -> FilePath -> m ()
-saveBuffer (BufferId theBufId) fPath = do
-   _syncId@(SyncId syncIdInt) <- newSyncId
-   callOSC $ OSC "/b_write" [
-      OSC_I theBufId
-     ,OSC_S (BS8.pack fPath)
-     ,OSC_S "wav"
-     ,OSC_S "float"
-     , OSC_I (-1)
-     , OSC_I 0
-     , OSC_I 0
-       -- We make this synchronous because what if you send a "/b_write" then a "/quit"?(!):
-     , OSC_B . encodeOSC $ OSC "/sync" [OSC_I syncIdInt]
-     ]
+saveBuffer = writeBuffer
+
+writeBuffer :: VividAction m => BufferId -> FilePath -> m ()
+writeBuffer = writeBufferWith defaultWBArgs
+
+writeBufferWith :: VividAction m => WriteBufArgs -> BufferId -> FilePath -> m ()
+writeBufferWith args bufId fPath =
+   oscWSync $ \syncId -> callOSC $
+      SCCmd.b_write
+         bufId
+         fPath
+         "wav"
+         "float"
+         -- Num frames:
+         Nothing
+         -- Start frame:
+         0
+         -- Whether to leave the file open (useful for diskOut)
+         (_wb_keepOpen args)
+         -- We make this synchronous because what if you send a
+         -- "/b_write" then a "/quit"?(!):
+         (Just $ SCCmd.sync syncId)
+
+-- | We may add arguments in the future ; to future-proof your code, just update
+--   fields of 'defaultWBArgs'
+data WriteBufArgs
+   = WriteBufArgs {
+    _wb_keepOpen :: Bool
+   }
+ deriving (Show, Read, Eq, Ord)
+
+defaultWBArgs :: WriteBufArgs
+defaultWBArgs = WriteBufArgs {
+     _wb_keepOpen = False
+   }
+
+-- | Close an open soundfile and write header information
+-- 
+--   Synchronous
+closeBuffer :: VividAction m => BufferId -> m ()
+closeBuffer bufId = oscWSync $ \syncId ->
+   callOSC $ SCCmd.b_close bufId (Just $ SCCmd.sync syncId)
+
+closeBuf :: VividAction m => BufferId -> m ()
+closeBuf = closeBuffer
+
+-- | Zero the sample data in a buffer
+-- 
+--   Synchronous
+zeroBuf :: VividAction m => BufferId -> m ()
+zeroBuf bufId = oscWSync $ \syncId ->
+   callOSC $ SCCmd.b_zero bufId (Just $ SCCmd.sync syncId)
+
+-- More info is available in HelpSource/Reference/default_group.schelp
+defaultGroup :: Group ; defaultGroup = Group (NodeId 1)

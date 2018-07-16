@@ -1,11 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoUndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 
 module Vivid.UGens.UserInteraction (
 ---     keyState
@@ -14,6 +16,7 @@ module Vivid.UGens.UserInteraction (
    , mouseY
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.UGens.Args
 import Vivid.SynthDef.FromUA

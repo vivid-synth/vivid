@@ -25,9 +25,8 @@ module Vivid.UGens.Multichannel (
 ---   , panAz
      -- See above:
    -- , rotate2
----   , splay
+   , splay
 ---   , splayAz
----   , splayZ
 
      -- * Multichannel > Select
 
@@ -42,14 +41,19 @@ module Vivid.UGens.Multichannel (
      
    , mix
 ---   , numChannels
+
+   , addChannels
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 --import Vivid.SynthDef.FromUA
 import Vivid.UGens.Algebraic
 import Vivid.UGens.Args
+import Vivid.UGens.Generators.SingleValue (dc)
 import Vivid.SynthDef.FromUA
 
+import Control.Monad (foldM, zipWithM)
 import Data.List.Split (chunksOf)
 
 --- biPanB2 ::
@@ -76,16 +80,43 @@ pan2 = makePolyUGen
    (Vs::Vs '["in","pos","level"])
    (level_ (1::Float))
 
+-- return a tuple?: -- no no that's exactly when you run into problems with the foldable shit -- people get a tuple when they expect a list....
 --- pan4 ::
 --- pan4 =
 --- panAz ::
 --- panAz =
---- splay ::
---- splay =
+
+-- | "Spreads [a list] of channels across the stereo field."
+splay :: ToSig s a => [s] -> SDBody' a [Signal]
+splay sigsMono = do
+   -- sigs' <- mapM toSig sigs
+   let numChans :: Float
+       numChans = toEnum $ max 2 $ (length::[a]->Int) sigsMono
+   let positions :: [Float]
+       positions =
+         map ((\x->x-1) . (*(2/(numChans-1)))) [0..(numChans-1)]
+    -- note SC has a different calculation for KR:
+   let level = sqrt (recip numChans)
+   sigsStereo <- (\x -> zipWithM x sigsMono positions) $ \sig pos ->
+      pan2 (in_ sig, pos_ pos)
+   -- todo: is the rate correct in ALL cases?:
+   mapM (level ~*) =<< foldM addChannels [] sigsStereo
+
+
+-- | "Spreads [a list] of channels across the stereo field. Optional arguments are spread
+--   and center, and equal power levelCompensation. The formula for the stereo position
+--   is:
+-- 
+--   > ((0 .. (n - 1)) * (2 / (n - 1) - 1) * spread + center
+--- splay' :: 
+--- splay' =
+
 --- splayAz ::
 --- splayAz =
---- splayZ ::
---- splayZ =
+
+-- Don't implement: the geometry is wrong here and it's been deprecated:
+-- splayZ ::
+
 --- linSelectX ::
 --- linSelectX =
 --- linXFade2 ::
@@ -105,11 +136,12 @@ select which array = do
 --- xFade2 =
 
 -- | Mixes down a list of audio rate inputs to one. 
---   The list can't be empty.
 -- 
 --   This is more efficient than e.g. @foldl1 (~+)@
+--
+--   If the list is empty this is the same as @dc 0@
 mix :: ToSig s a => [s] -> SDBody' a Signal
-mix [] = error "empty mix"
+mix [] = dc 0
 mix [x] = toSig x
 mix xs = mix =<< (mapM mix' . chunksOf 4) =<< mapM toSig xs
  where
@@ -123,3 +155,11 @@ mix xs = mix =<< (mapM mix' . chunksOf 4) =<< mapM toSig xs
 
 --- numChannels ::
 --- numChannels =
+
+-- | Like 'zipWithM' but if the lists are of different lengths, doesn't shorten the longer one
+addChannels :: (ToSig s0 a, ToSig s1 a) => [s0] -> [s1] -> SDBody' a [Signal]
+addChannels [] xs = mapM toSig xs
+addChannels xs [] = mapM toSig xs
+addChannels (x:xs) (y:ys) = do
+   foo <- toSig x ~+ toSig y
+   (foo:) <$> addChannels xs ys

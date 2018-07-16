@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
@@ -9,22 +10,23 @@ module Vivid.UGens.InOut (
      -- This is deprecated in SC:
    --   audioIn
 ---     diskIn
----   , diskOut
+     diskOut
 ---   , in__
-     aIn
+   , aIn
    , kIn
 ---   , inFeedback
 ---   , inTrig
 ---   , lagIn
----   , localIn
----   , localOut
+   , localIn
+   , localOut
 ---   , maxLocalBufs
 ---   , offsetOut
    , out
+   , out'
    , aOut
-   , kOut
-   , kOut_mono
----   , replaceOut
+--- , kOut
+--- , kOut_mono
+   , replaceOut
 
      -- These 2 have been deprecated in SC:
 --    , sharedIn
@@ -35,6 +37,8 @@ module Vivid.UGens.InOut (
 ---   , xOut
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
+import Vivid.SC.Server.Types (BufferId(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Algebraic
@@ -42,7 +46,7 @@ import Vivid.UGens.Args
 
 import Data.Proxy
 
-aIn :: (Args '["bus"] '[] a) => a -> SDBody a Signal
+aIn :: Args '["bus"] '[] a => a -> SDBody a Signal
 aIn = makeUGen
    "In" AR
    (Vs::Vs '["bus"])
@@ -50,8 +54,22 @@ aIn = makeUGen
 
 --- diskIn ::
 --- diskIn =
---- diskOut ::
---- diskOut =
+
+-- | 'buf' is a temporary buffer to accumulate before writing.
+-- 
+--    "NOTE: The Buffer's numFrames must be a power of two and is recommended to be at least 65536 -- preferably 131072 or 262144. Smaller buffer sizes mean more frequent disk access, which can cause glitches."
+--
+--    65536 == 2 ^ 16
+--    131072 == 2 ^ 17
+--    262144 == 2 ^ 18
+-- 
+--    For ease of use with 'sd' this has output type \"[Signal]\", but the list
+--      is always empty
+diskOut :: ToSig s a => BufferId -> [s] -> SDBody' a [Signal]
+diskOut (BufferId bufId) sigs = do
+   sigs' <- mapM toSig sigs
+   addPolyUGen $ UGen (UGName_S "DiskOut") AR (Constant (realToFrac bufId) : sigs') 0
+
 --- in__ ::
 --- in__ =
 --- inFeedback ::
@@ -59,7 +77,7 @@ aIn = makeUGen
 --- inTrig ::
 --- inTrig =
 
-kIn :: (Args '["bus"] '[] a) => a -> SDBody a Signal
+kIn :: Args '["bus"] '[] a => a -> SDBody a Signal
 kIn = makeUGen
    "In" KR
    (Vs::Vs '["bus"])
@@ -67,10 +85,20 @@ kIn = makeUGen
 
 --- lagIn ::
 --- lagIn =
---- localIn ::
---- localIn =
---- localOut ::
---- localOut =
+
+-- localIn :: Args '[] '["default"] a => Int -> a -> SDBody a [Signal]
+-- "default" is 0 for now:
+localIn :: Int -> SDBody' a [Signal]
+localIn numChans = do
+   addPolyUGen $ UGen (UGName_S "LocalIn") AR [Constant 0] numChans
+
+localOut :: ToSig s as => [s] -> SDBody' as ()
+localOut inSig = do
+   sigs <- mapM toSig inSig
+   [] <- addPolyUGen $ UGen (UGName_S "LocalOut") AR sigs 0
+   pure ()
+
+
 --- maxLocalBufs ::
 --- maxLocalBufs =
 --- offsetOut ::
@@ -79,37 +107,33 @@ kIn = makeUGen
 out :: (ToSig i a, ToSig busNum a) => busNum -> [i] -> SDBody' a [Signal]
 out = aOut
 
+out' :: (Elem "out" a, ToSig i a) => [i] -> SDBody' a [Signal]
+out' = out (V::V "out")
+
 aOut :: (ToSig i a, ToSig busNum a) => busNum -> [i] -> SDBody' a [Signal]
 aOut busNum is = do
    busNum' <- toSig busNum
    is' <- mapM toSig is
    addPolyUGen $ UGen (UGName_S "Out") AR (busNum' : is') ((length::[a]->Int) is)
 
-kOut :: (ToSig i a, ToSig busNum a) => busNum -> [i] -> SDBody' a [Signal]
-kOut busNum is = do
-   busNum' <- toSig busNum
-   is' <- mapM toSig is
-   addPolyUGen $ UGen (UGName_S "Out") KR (busNum' : is') ((length::[a]->Int) is)
-
--- | Temporary
-kOut_mono :: (ToSig i a) => Int -> i -> SDBody' a Signal
-kOut_mono busNum i = do
-   i' <- toSig i
-   addUGen $ UGen (UGName_S "Out") KR [Constant (toEnum busNum), i'] 1
+-- kOut
 
 -- kIn ::
 -- kIn =
 
---- replaceOut ::
---- replaceOut =
-
+-- todo: does this work/is it robust?:
+replaceOut :: (ToSig i a, ToSig busNum a) => busNum -> [i] -> SDBody' a [Signal]
+replaceOut busNum is = do
+   busNum' <- toSig busNum
+   is' <- mapM toSig is
+   addPolyUGen $ UGen (UGName_S "ReplaceOut") AR (busNum' : is') ((length::[a]->Int) is)
 
 -- | Audio bus input (usually mic)
 soundIn :: Args '["bus"] '[] a => a -> SDBody a Signal
 soundIn args = do
    bus <- args `uaArgVal` (Proxy::Proxy "bus")
    nob <- addUGen $ UGen (UGName_S "NumOutputBuses") IR [] 1 {- :: SDBody a Signal -}
-   inPos <- nob ~+ bus
+   inPos <- nob ~+ (bus :: Signal)
    addUGen $ UGen (UGName_S "In") AR [inPos] 1
 
 

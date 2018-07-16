@@ -17,13 +17,14 @@ module Vivid.UGens.Info (
    , numInputBuses
    , numOutputBuses
    , numRunningSynths
-   -- , poll
+   , poll
    , radiansPerSample
    , sampleDur
    , sampleRate
    , subsampleOffset
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -74,8 +75,20 @@ numRunningSynths :: SDBody' a Signal
 numRunningSynths =
    addUGen $ UGen (UGName_S "NumRunningSynths") IR [] 1
 
--- poll ::
--- poll =
+-- } This is CPU-intensive: only use for debugging!
+-- 
+--   First argument is frequency of polling: the number of times per second to poll
+-- 
+--   Returns the UGen it's polling so you can add \"poll\" to an existing
+--   signal chain without altering it
+poll :: Float -> String -> SDBody' a Signal -> SDBody' a Signal
+poll freq label polledThing = do
+   imp <- addUGen $ UGen (UGName_S "Impulse") AR [Constant freq] 1
+   pt <- polledThing
+   let args = ([imp, pt] ++) $ map (Constant . realToFrac) $
+        [-1, (length::[a]->Int) label] ++ map fromEnum label
+   _ <- addUGen $ UGen (UGName_S "Poll") AR args 1
+   pure pt
 
 radiansPerSample :: SDBody' a Signal
 radiansPerSample =

@@ -32,6 +32,7 @@ module Vivid.UGens.Generators.Stochastic (
    , whiteNoise
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args

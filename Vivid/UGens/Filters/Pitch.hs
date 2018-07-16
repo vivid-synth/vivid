@@ -11,6 +11,7 @@ module Vivid.UGens.Filters.Pitch (
    , vibrato
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.UGens.Args
 import Vivid.SynthDef.FromUA

@@ -30,16 +30,20 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.Actions.IO (
+     defineSDFromFile
    ) where
 
 import Vivid.Actions.Class
 import Vivid.OSC (OSC(..), OSCDatum(..), encodeOSC, Timestamp(..), utcToTimestamp)
+-- import Vivid.SC.SynthDef.Types (CalculationRate(..))
+import Vivid.SC.Server.Commands as SCCmd
 import Vivid.SCServer.State (BufferId(..), NodeId(..), SyncId(..), getNextAvailable, scServerState, SCServerState(..))
 import Vivid.SCServer.Connection ({-getMailboxForSyncId,-} getSCServerSocket, waitForSync_io)
 import Vivid.SynthDef
@@ -48,10 +52,11 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM (readTVarIO, atomically, modifyTVar)
 import Control.Monad
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString as BS (writeFile)
 import Data.Hashable
 import qualified Data.Set as Set
 import Data.Time (getCurrentTime)
+import System.Directory (getTemporaryDirectory)
 
 import Network.Socket (withSocketsDo) -- We add this everywhere for Windows compat
 import Network.Socket.ByteString (send)
@@ -64,6 +69,7 @@ instance VividAction IO where
    callBS message = do
       let !_ = scServerState
       sock <- getSCServerSocket
+      -- TODO: if TCP, prefix with the length ("## int - the length in bytes of the following message.") from Server-Architecture.schelp
       _ <- withSocketsDo $ send sock message
       return ()
 
@@ -71,15 +77,15 @@ instance VividAction IO where
    sync = do
       wait (0.01 :: Float) -- Just to make sure you don't "sync" before calling
                            --   the command you want to sync (temporary)
-      sid@(SyncId syncId) <- newSyncId
-      callOSC $ OSC "/sync" [OSC_I syncId]
+      sid <- newSyncId
+      callOSC $ SCCmd.sync sid
       waitForSync sid
 
    waitForSync :: SyncId -> IO ()
    waitForSync = waitForSync_io
 
-   wait :: (RealFrac n) => n -> IO ()
-   wait t = threadDelay $ round (t * 10^(6::Int))
+   wait :: Real n => n -> IO ()
+   wait t = threadDelay $ round (realToFrac (t * 10^(6::Int)) :: Double)
 
    getTime :: IO Timestamp
    getTime = utcToTimestamp <$> getCurrentTime
@@ -108,11 +114,18 @@ instance VividAction IO where
       hasBeenDefined <- (((name, hash synthDef) `Set.member`) <$>) $
          readTVarIO (_scServerState_definedSDs scServerState)
       unless hasBeenDefined $ do
-         syncId@(SyncId syncIdInt) <- newSyncId
-         callOSC $ OSC (BS8.pack "/d_recv") [
-              OSC_B $ encodeSD synthDef
-            , OSC_B . encodeOSC $ OSC "/sync" [OSC_I syncIdInt]
-            ]
-         waitForSync syncId
+         oscWSync $ \syncId ->
+            callOSC $
+               SCCmd.d_recv [sdToLiteral synthDef] (Just $ SCCmd.sync syncId)
          atomically $ modifyTVar (_scServerState_definedSDs scServerState) $
             ((name, hash synthDef) `Set.insert`)
+
+-- | Synchronous
+defineSDFromFile :: SynthDef a -> IO ()
+defineSDFromFile theSD = do
+   tempDir <- getTemporaryDirectory
+   let fName = tempDir++"/" ++ show (hash theSD) ++ ".scsyndef"
+   BS.writeFile fName $ encodeSD theSD
+   oscWSync $ \syncId ->
+      callOSC $ SCCmd.d_load fName (Just $ SCCmd.sync syncId)
+

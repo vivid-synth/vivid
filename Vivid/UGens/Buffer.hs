@@ -1,6 +1,9 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
 
 {-# LANGUAGE NoIncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -53,11 +56,13 @@ module Vivid.UGens.Buffer (
 ---   , wrapIndex
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
 
 import Data.Proxy
+import GHC.Real (Ratio((:%)))
 
 -- | Add a single LocalBuf for FFT
 -- 
@@ -72,13 +77,20 @@ localBuf args = do
    addUGen $ UGen (UGName_S "LocalBuf") IR [numChannels', numFrames', mlb] 1
 
 
--- | Unlike in SC, "doneAction" defaults to 2
+-- | Unlike in SC, \"doneAction\\" defaults to 2
+-- 
+--   Also, the default rate is the 'bufRateScale' of the buffer
 playBuf :: (Args '["buf"] '["rate","trigger","startPos","loop","doneAction"] a) => a -> SDBody a Signal
-playBuf = makeUGen
+playBuf args = ($ args) $ makeUGen
    "PlayBuf" AR
    (Vs::Vs '["buf","rate","trigger","startPos","loop","doneAction"])
-   (rate_ ((1)::Float), trigger_ ((1)::Float), startPos_ ((0)::Float)
+   (rate_ defaultRate, trigger_ ((1)::Float), startPos_ ((0)::Float)
    ,loop_ ((0)::Float), doneAction_ ((2)::Float))
+ where
+        -- TODO: maybe don't want to do this. especially cause if you set the rate it doesn't multiply by this
+        -- update docs too:
+          -- todo : put bufratescale on all of em if we decide to keep this behavior
+   defaultRate = bufRateScale $ uaArgVal args (V::V "buf")
 
 
 -- | Unlike in SC, "doneAction" defaults to 2 and "loop" defaults to 0
@@ -89,14 +101,14 @@ recordBuf = makeUGen
    -- this is another example of different order:
    (offset_ ((0)::Float), recLevel_ ((1)::Float), preLevel_ ((0)::Float), run_ ((1)::Float), loop_ ((0)::Float), trigger_ ((1)::Float), doneAction_ ((2)::Float))
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 bufChannels :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 bufChannels = makeUGen
    "BufChannels" KR
    (Vs::Vs '["buf"])
    NoDefaults
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 bufDur :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 bufDur = makeUGen
    "BufDur" KR
@@ -105,7 +117,7 @@ bufDur = makeUGen
 
 -- bufFrames :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 -- 
 --   Note you don't need to use "buf_" when you use this
 bufFrames :: ToSig s as => s -> SDBody' as Signal
@@ -116,18 +128,18 @@ bufFrames = (flip (.)) buf_ $ makeUGen
 
 -- bufRateScale :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 -- 
 --   Note you don't need to use "buf_" when you use this
 bufRateScale :: ToSig s as => s -> SDBody' as Signal
-bufRateScale = (flip (.)) buf_ $ makeUGen
+bufRateScale = (. buf_) $ makeUGen
    "BufRateScale" KR
    (Vs::Vs '["buf"])
    NoDefaults
 
 -- bufSampleRate :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 -- 
 --   Note you don't need to use "buf_" when you use this
 bufSampleRate :: ToSig s as => s -> SDBody' as Signal
@@ -138,7 +150,7 @@ bufSampleRate = (flip (.)) buf_ $ makeUGen
 
 -- bufSamples :: (Args '["buf"] '[] a) => a -> SDBody a Signal
 
--- | Defaults to 'KR'. Can be 'IR' too but it's not recommended.
+-- | Defaults to 'KR'. Can be 'IR' too but be careful that the buffer doesn't change if so!
 -- 
 --   Note you don't need to use "buf_" when you use this
 bufSamples :: ToSig s as => s -> SDBody' as Signal
@@ -147,12 +159,21 @@ bufSamples = (flip (.)) buf_ $ makeUGen
    (Vs::Vs '["buf"])
    NoDefaults
 
--- | "phase" must be at audio rate ('AR')
-bufRd :: (Args '[{- "numChans",-} "buf", "phase"] '["loop", "interp"] a) => a -> SDBody a Signal
-bufRd = makeUGen
-   "BufRd" AR
-   (Vs::Vs '[{- "numChans", -} "buf", "phase", "loop", "interp"])
-   (loop_ ((1)::Float), interp_ ((2)::Float))
+-- | \"phase\" must be at audio rate ('AR')
+-- 
+--   \"numChans\" can't be set after the synth is created, and must be a fixed integer
+bufRd :: Args '["numChans", "buf", "phase"] '["loop", "interp"] a => a -> SDBody a [Signal]
+bufRd args = do
+   numChans <- uaArgVal args (V::V "numChans") >>= \case
+      Constant x -> case toRational x of
+         n :% 1 -> pure $ fromInteger n
+         _ -> error $ "bufRd: numChans not an integer!: " ++ show x
+      _ -> error "bufrd: not a fixed integer!"
+   makePolyUGen numChans
+      "BufRd" AR
+      (Vs::Vs '["buf", "phase", "loop", "interp"])
+      (loop_ ((1)::Float), interp_ ((2)::Float))
+      args
 
 -- | "phase" must be at audio rate ('AR')
 bufWr :: (Args '["in", {- "numChans", -} "buf", "phase"] '["loop"] a) => a -> SDBody a Signal

@@ -6,16 +6,22 @@
 {-# LANGUAGE NoUndecidableInstances #-}
 
 module Vivid.SCServer.Types (
-     Node(..)
-   , shrinkNodeArgs
-   , NodeId(..)
-   , BufferId(..)
-   , SyncId(..)
-   , HasNodeId(..)
+
+   -- Types
+     Synth(..)
+
+   -- Functions
+   , shrinkSynthArgs
+
+   -- Classes
+   , IsNode(..)
+   , SynthOrNodeId
+   , IsGroup
    ) where
 
 import Data.Int
 import GHC.TypeLits
+import Vivid.SC.Server.Types
 import Vivid.SynthDef.TypesafeArgs
 
 
@@ -30,57 +36,53 @@ import Vivid.SynthDef.TypesafeArgs
 -- 
 --   Note that if you don't want this type safety, you can e.g.
 -- 
---   >> Node n <- synth foo ()
+--   >> Synth n <- synth foo ()
 --   >> setG n (0.1 ::I "vol")
 -- 
 --   Or:
 -- 
 --   >> ns <- mapM (flip synth ()) [foo, bar, baz]
---   >> map (setG (0::I "asdf") . unNode) ns
+--   >> map (setG (0::I "asdf") . unSynth) ns
 -- 
 --   Or:
 -- 
 --   >> n <- synthG foo ()
 -- 
---   (You also may want to look at 'shrinkNodeArgs' if you want to construct a list
+--   (You also may want to look at 'shrinkSynthArgs' if you want to construct a list
 --   which has synthdefs or nodes of different types)
-data Node (args :: [Symbol])
-   = Node { unNode :: NodeId }
+newtype Synth (args :: [Symbol]) = Synth { _unSynth :: NodeId }
+ deriving (Show, Read, Eq, Ord)
 
 -- | So let's say you have a node:
 -- 
---   > foo :: Node '["amp", "freq", "phase"]
+--   > foo :: Synth '["amp", "freq", "phase"]
 -- 
 --   and you want to add it to a list of nodes:
 -- 
---   > ns :: [Node '["freq", "phase"]]
+--   > ns :: [Synth '["freq", "phase"]]
 -- 
 --   If you don't plan on setting the \"amp\" argument, you can \"shrink\" to
 --   the compatible arguments:
 -- 
---   > ns' = shrinkNodeArgs foo : ns
+--   > ns' = shrinkSynthArgs foo : ns
 -- 
 --   (The same thing exists for SynthDefs -- 'Vivid.SynthDef.shrinkSDArgs')
-shrinkNodeArgs :: (Subset new old) => Node old -> Node new
-shrinkNodeArgs (Node nId) = Node nId
+shrinkSynthArgs :: (Subset new old) => Synth old -> Synth new
+shrinkSynthArgs (Synth nId) = Synth nId
 
-newtype NodeId
-      = NodeId { _unNodeId :: Int32 }
-   deriving (Show, Eq, Ord, Read)
+class IsNode a where getNodeId :: a -> NodeId
 
-class HasNodeId a where
-   getNodeId :: a -> NodeId
+instance IsNode NodeId where getNodeId n = n
+instance IsNode (Synth a) where getNodeId (Synth n) = n
+instance IsNode Group where getNodeId (Group n) = n
+instance IsNode ParGroup where getNodeId (ParGroup n) = n
 
-instance HasNodeId NodeId where
-   getNodeId n = n
+-- | For gradually-typed 'free'
+class IsNode a => SynthOrNodeId a
+instance SynthOrNodeId (Synth x)
+instance SynthOrNodeId NodeId
 
-instance HasNodeId (Node a) where
-   getNodeId (Node n) = n
-
-newtype BufferId
-      = BufferId { _unBufferId :: Int32 }
-   deriving (Show, Eq, Ord, Read)
-
-newtype SyncId
-      = SyncId Int32
-   deriving (Show, Read, Eq, Ord)
+-- | 'Group' and 'ParGroup'
+class IsNode g => IsGroup g
+instance IsGroup Group
+instance IsGroup ParGroup

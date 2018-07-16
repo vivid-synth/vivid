@@ -18,7 +18,8 @@ module Vivid.UGens.Filters.Nonlinear (
    , tBall
    ) where
 
-import Vivid.SynthDef (CalculationRate(AR), {- SDBody, -} Signal)
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
+import Vivid.SynthDef ({- SDBody, -} Signal)
 import Vivid.UGens.Args
 import Vivid.SynthDef.FromUA
 import Vivid.SynthDef.TypesafeArgs

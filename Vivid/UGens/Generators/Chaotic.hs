@@ -31,6 +31,7 @@ module Vivid.UGens.Generators.Chaotic (
 ---   , standardN
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.UGens.Args
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA

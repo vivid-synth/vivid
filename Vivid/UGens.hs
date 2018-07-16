@@ -64,7 +64,7 @@ module Vivid.UGens (
 --   , module Vivid.UGens.Multichannel.Panners
    , module Vivid.UGens.Random
    , module Vivid.UGens.Reverbs
-   -- , module Vivid.UGens.SynthControl
+   , module Vivid.UGens.SynthControl
    , module Vivid.UGens.Triggers
    -- , module Vivid.UGens.Undocumented
    , module Vivid.UGens.UserInteraction
@@ -102,7 +102,7 @@ import Vivid.UGens.Multichannel
 --import Vivid.UGens.Multichannel.Panners
 import Vivid.UGens.Random
 import Vivid.UGens.Reverbs
--- import Vivid.UGens.SynthControl
+import Vivid.UGens.SynthControl
 import Vivid.UGens.Triggers
 -- import Vivid.UGens.Undocumented
 import Vivid.UGens.UserInteraction

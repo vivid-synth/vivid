@@ -41,12 +41,13 @@ module Vivid.UGens.Delays (
    , delayC
    , delayL
    , delayN
----   , pluck
+   , pluck
 ---   , tDelay
    ) where
 
 -- import Data.ByteString (ByteString)
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -129,7 +130,12 @@ delayN =  makeUGen
    (Vs::Vs '["in", "maxDelaySecs", "delaySecs"])
    (maxDelayTime_ (0.2::Float), delayTime_ (0.2::Float))
 
---- pluck ::
---- pluck =
+pluck :: Args '[] '["in","trigger","maxDelaySecs","delaySecs","decaySecs","coef"] a => a -> SDBody a Signal
+pluck = makeUGen
+   "Pluck" AR
+   (Vs::Vs '["in","trigger","maxDelaySecs","delaySecs","decaySecs","coef"])
+   (in_ (0::Float), trigger_ (1::Float), maxDelaySecs_ (0.2::Float)
+   ,delaySecs_ (0.2::Float), decaySecs_ (1::Float), coef_ (0.5::Float))
+
 --- tDelay ::
 --- tDelay =

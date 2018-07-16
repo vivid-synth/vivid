@@ -12,7 +12,7 @@ module Vivid.UGens.Generators.Deterministic (
      -- In Vivid.UGens.Filters:
    -- , dynKlank
      fSinOsc
----   , formant
+   , formant
    , impulse
 ---   , klang
      -- In Vivid.UGens.Filters:
@@ -40,6 +40,7 @@ module Vivid.UGens.Generators.Deterministic (
 ---   , vOsc3
    ) where
 
+import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SynthDef
 import Vivid.SynthDef.FromUA
 import Vivid.UGens.Args
@@ -57,8 +58,13 @@ fSinOsc = makeUGen
    (Vs::Vs '["freq", "phase"])
    (phase_ (0::Float))
 
---- formant ::
---- formant =
+-- | Only runs at audio rate. All arguments must be at control rate or constant.
+--   \"bwFreq\" must be greater than or equal to \"fundFreq\".
+formant :: Args '["fundFreq", "formFreq", "bwFreq"] '[] a => a -> SDBody a Signal
+formant = makeUGen
+   "Formant" AR
+   (Vs::Vs '["fundFreq", "formFreq", "bwFreq"])
+   NoDefaults
 
 impulse :: (Args '["freq"] '["phase"] a) => a -> SDBody a Signal
 impulse = makeUGen
@@ -73,7 +79,7 @@ lfCub :: (Args '["freq"] '["iphase"] a) => a -> SDBody a Signal
 lfCub = makeUGen
    "LFCub" AR
    (Vs::Vs '["freq", "iphase"])
-   (freq_ (440::Float))
+   (iphase_ (0::Float))
 
 lfGauss :: (Args '[] '["duration", "width", "iphase", "loop", "doneAction"] a) => a -> SDBody a Signal
 lfGauss = makeUGen
@@ -85,7 +91,7 @@ lfPar :: (Args '["freq"] '["iphase"] a) => a -> SDBody a Signal
 lfPar = makeUGen
    "LFPar" AR
    (Vs::Vs '["freq", "iphase"])
-   (freq_ (440::Float))
+   (iphase_ (0::Float))
 
 lfPulse :: (Args '["freq"] '["iphase", "width"] a) => a -> SDBody a Signal
 lfPulse = makeUGen
