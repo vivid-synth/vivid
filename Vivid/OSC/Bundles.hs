@@ -9,13 +9,23 @@ module Vivid.OSC.Bundles (
    ) where
 
 import Vivid.OSC
-import Vivid.OSC.Old (encodedOSC_addLength)
+-- import Vivid.OSC.Old (encodedOSC_addLength)
 import qualified Vivid.SC.Server.Commands as SCCmd
 import Vivid.SC.Server.Types (NodeId(..))
 
 import Data.ByteString (ByteString)
 import qualified Data.List as L
 import Data.Monoid
+
+-- TEMP:
+import Data.Word
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString as BS
+import Data.Binary (encode)
+encodedOSC_addLength :: ByteString -> ByteString
+encodedOSC_addLength bs =
+   BSL.toStrict (encode (toEnum (BS.length bs) :: Word32)) <> bs
+
 
 -- | Encode OSC bundles, specifically for NRT synthesis.
 --   (It's more than just \"mconcat . map 'encodeOSCBundle'\").

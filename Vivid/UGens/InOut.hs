@@ -1,10 +1,13 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE
+     DataKinds
+   , ExtendedDefaultRules
+   , LambdaCase
+   , OverloadedStrings
 
-{-# LANGUAGE NoIncoherentInstances #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE NoUndecidableInstances #-}
+   , NoIncoherentInstances
+   , NoMonomorphismRestriction
+   , NoUndecidableInstances
+   #-}
 
 module Vivid.UGens.InOut (
      -- This is deprecated in SC:
@@ -95,7 +98,9 @@ localIn numChans = do
 localOut :: ToSig s as => [s] -> SDBody' as ()
 localOut inSig = do
    sigs <- mapM toSig inSig
-   [] <- addPolyUGen $ UGen (UGName_S "LocalOut") AR sigs 0
+   addPolyUGen (UGen (UGName_S "LocalOut") AR sigs 0) >>= \case
+      [] -> pure ()
+      _ -> error "??? (23s0g)"
    pure ()
 
 

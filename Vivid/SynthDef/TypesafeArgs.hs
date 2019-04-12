@@ -2,26 +2,35 @@
 {-# LANGUAGE NoIncoherentInstances #-}
 
 -- {-# LANGUAGE ConstraintKinds -}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 -- {-# LANGUAGE GADTSyntax, NoMonoLocalBinds #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
 -- {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
-{-# LANGUAGE TypeOperators #-}
--- Needed for a nested type family instance:
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns #-}
+
+{-# LANGUAGE
+     DataKinds
+   , ExistentialQuantification
+   , FlexibleContexts
+   , FlexibleInstances
+   , FunctionalDependencies
+   , InstanceSigs
+   , LambdaCase
+   , MultiParamTypeClasses
+   , PolyKinds
+   , ScopedTypeVariables
+   , StandaloneDeriving
+   , TypeFamilies, NoMonoLocalBinds
+   , TypeOperators
+   , UndecidableInstances
+   , ViewPatterns
+
+   , DefaultSignatures
+   , FlexibleContexts
+   , StandaloneDeriving
+   , TypeOperators
+   #-}
 
 {-# LANGUAGE NoMonomorphismRestriction #-}
+
+-- UndecidableInstances is needed for a nested type family instance ^
 
 module Vivid.SynthDef.TypesafeArgs (
 
@@ -64,6 +73,7 @@ module Vivid.SynthDef.TypesafeArgs (
 
 import Control.Arrow (first, second)
 import GHC.Exts
+import GHC.Generics
 import GHC.TypeLits
 import qualified Data.Map as Map
 import Data.Proxy
@@ -151,7 +161,9 @@ type family IsElemOf (a :: x) (l :: [x]) :: Bool_IsElemOf where
 --   >> SetEqual '["bye","hi","bye","bye"] '["bye","hi","hi"] :: Bool
 --   >> = 'True
 type family SetEqual (a :: [x]) (b :: [x]) :: Bool where
-   SetEqual a b = SubsetBoolToBool (IsSubsetOf a b) && SubsetBoolToBool (IsSubsetOf b a)
+   SetEqual a b =
+         SubsetBoolToBool (IsSubsetOf a b)
+      && SubsetBoolToBool (IsSubsetOf b a)
 
 
 data Variable (a :: Symbol) =
@@ -190,7 +202,7 @@ instance (GetSymbolVals (VarSet xs)) => Show (VarSet xs) where
       "(VarSet::VarSet "++show (getSymbolVals argSet)++")"
 
 addVarToSet :: Variable sym -> VarSet syms -> VarSet (sym ': syms)
-addVarToSet _ _ = VarSet
+addVarToSet V VarSet = VarSet
 
 emptyVarSet :: VarSet '[]
 emptyVarSet = VarSet
@@ -294,6 +306,11 @@ infixr ?>
 class VarList from where
    type InnerVars from :: [Symbol]
    makeTypedVarList :: from -> TypedVarList (InnerVars from)
+
+{-
+   default makeTypedVarList :: (Generic from) => from -> TypedVarList (InnerVars from)
+   makeTypedVarList = undefined
+-}
 
 infixl `AddParams`
 
@@ -676,8 +693,8 @@ instance
    (KnownSymbol a, KnownSymbol b, KnownSymbol c, KnownSymbol d, KnownSymbol e,
     KnownSymbol f, KnownSymbol g, KnownSymbol h, KnownSymbol i, KnownSymbol j,
     KnownSymbol k, KnownSymbol l, KnownSymbol m, KnownSymbol n, KnownSymbol o
-   ,KnownSymbol p,KnownSymbol q,KnownSymbol r,KnownSymbol s,KnownSymbol t
-   ,KnownSymbol u,KnownSymbol v,KnownSymbol w,KnownSymbol x,KnownSymbol y
+   ,KnownSymbol p, KnownSymbol q, KnownSymbol r, KnownSymbol s, KnownSymbol t
+   ,KnownSymbol u, KnownSymbol v, KnownSymbol w, KnownSymbol x, KnownSymbol y
    ) =>
    VarList
      (I a, I b, I c, I d, I e, I f, I g, I h, I i, I j, I k, I l, I m, I n, I o,I p,I q,I r,I s,I t,I u,I v,I w,I x,I y)
@@ -689,11 +706,11 @@ instance
 
 
 instance
-   (KnownSymbol a, KnownSymbol b, KnownSymbol c, KnownSymbol d, KnownSymbol e,
-    KnownSymbol f, KnownSymbol g, KnownSymbol h, KnownSymbol i, KnownSymbol j,
-    KnownSymbol k, KnownSymbol l, KnownSymbol m, KnownSymbol n, KnownSymbol o
-   ,KnownSymbol p,KnownSymbol q,KnownSymbol r,KnownSymbol s,KnownSymbol t
-   ,KnownSymbol u,KnownSymbol v,KnownSymbol w,KnownSymbol x,KnownSymbol y
+   (KnownSymbol a, KnownSymbol b, KnownSymbol c, KnownSymbol d, KnownSymbol e
+   ,KnownSymbol f, KnownSymbol g, KnownSymbol h, KnownSymbol i, KnownSymbol j
+   ,KnownSymbol k, KnownSymbol l, KnownSymbol m, KnownSymbol n, KnownSymbol o
+   ,KnownSymbol p, KnownSymbol q, KnownSymbol r, KnownSymbol s, KnownSymbol t
+   ,KnownSymbol u, KnownSymbol v, KnownSymbol w, KnownSymbol x, KnownSymbol y
    ,KnownSymbol z
    ) =>
    VarList

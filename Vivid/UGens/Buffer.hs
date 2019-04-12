@@ -88,6 +88,7 @@ playBuf args = ($ args) $ makeUGen
    ,loop_ ((0)::Float), doneAction_ ((2)::Float))
  where
         -- TODO: maybe don't want to do this. especially cause if you set the rate it doesn't multiply by this
+        -- alternative is to change 'rate_' to 'bufrate_' and have that 'arg' function do a multiply
         -- update docs too:
           -- todo : put bufratescale on all of em if we decide to keep this behavior
    defaultRate = bufRateScale $ uaArgVal args (V::V "buf")

@@ -7,15 +7,17 @@
 --   then make a new synth with the new definition
 
 
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE
+     BangPatterns
+   , FlexibleInstances
+   , InstanceSigs
+   , LambdaCase
+   , TypeSynonymInstances
 
-{-# LANGUAGE NoIncoherentInstances #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE NoUndecidableInstances #-}
+   , NoIncoherentInstances
+   , NoMonomorphismRestriction
+   , NoUndecidableInstances
+   #-}
 
 module Vivid.Actions.NRT (
      NRT -- (..) -- ^ May not be exported in the future
@@ -41,11 +43,12 @@ import Vivid.SynthDef.Types
 
 import Control.Applicative
 -- import Control.Arrow (first, second)
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State (get, modify, execStateT, StateT)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS (writeFile)
+import qualified Data.ByteString as BS (writeFile, hPut)
 import qualified Data.ByteString.UTF8 as UTF8
 import Data.Char (toLower)
 import Data.Hashable (hash)
@@ -53,8 +56,10 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid
 import qualified Data.Set as Set
+import System.Directory (canonicalizePath, getTemporaryDirectory, removeFile)
 import System.Exit
 import System.FilePath (takeExtension)
+import System.IO (openBinaryTempFile, hClose)
 import System.Process (system)
 import Prelude
 
@@ -146,7 +151,7 @@ writeNRTScore path action =
 --   The file type is detected from its extension.
 --   The extensions supported at the moment are .aif, .aiff, and .wav
 -- 
---   (Mac OS X users will need to make sure 'scsynth' is in their $PATH)
+--   (macOS users will need to make sure 'scsynth' is in their $PATH)
 -- 
 --   (And I apologize, but I really don't know what Windows users will need to do)
 -- 
@@ -160,10 +165,11 @@ writeNRTWith nrtArgs fPath nrtActions = do
    contents <- encodeOSCBundles <$> runNRT nrtActions
 
    --  ${SHELL}
+   -- Does this work on Windows?:
    system "/bin/sh -c 'which scsynth > /dev/null'" >>= \case
       ExitSuccess -> return ()
       ExitFailure _ -> error "No 'scsynth' found! Be sure to put it in your $PATH"
-   let tempFile = "/tmp/vivid_nrt_" <> (show . hash) contents <> ".osc"
+   let
        !fileType =
           case Map.lookup (map toLower $ takeExtension fPath) extensionMap of
              Just x -> x
@@ -174,12 +180,21 @@ writeNRTWith nrtArgs fPath nrtActions = do
             (".aif", "AIFF")
           , (".aiff", "AIFF")
           , (".wav", "WAV")
-            -- todo: these formats seem not to work:
+            -- todo: these formats seem not to work.
+            -- Try it on more-recent versions of SC:
           -- ".flac" -> "FLAC"
           -- ".ogg" -> "vorbis"
           ]
 
-   BS.writeFile tempFile contents
+   tempDir <- canonicalizePath =<< getTemporaryDirectory
+   tempFile <- bracket
+      (openBinaryTempFile tempDir "vivid_nrt_.osc")
+      (\(_, tempFileHandle) ->
+         hClose tempFileHandle)
+      (\(tempFile, tempFileHandle) -> do
+         BS.hPut tempFileHandle $ contents
+         pure tempFile)
+
    ExitSuccess <- system $ mconcat [
         --  ${SHELL}
         "/bin/sh -c "
@@ -192,7 +207,11 @@ writeNRTWith nrtArgs fPath nrtActions = do
       , show $ _nrtArgs_sampleRate nrtArgs," ", fileType, " int16 "
       , " \""
       ]
-   return ()
+
+   -- TODO: I'm a little skittish about turning this on:
+   -- removeFile tempFile
+
+   pure ()
 
 
 data NRTArgs

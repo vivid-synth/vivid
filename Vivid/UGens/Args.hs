@@ -168,6 +168,9 @@ envCurveNumber (Curve_Curve _) = 5
 damp_ :: ToSig s as => s -> UA "damp" as
 damp_ = UA . toSig
 
+damping_ :: ToSig s as => s -> UA "damping" as
+damping_ = UA . toSig
+
 db_ :: ToSig s as => s -> UA "db" as
 db_ = UA . toSig
 
@@ -221,6 +224,11 @@ doneAction_ = UA . toSig
 downSample_ :: ToSig s as => s -> UA "downSample" as
 downSample_ = UA . toSig
 
+dryLevel_, drylevel_ :: ToSig s as => s -> UA "dryLevel" as
+dryLevel_ = UA . toSig
+
+drylevel_ = dryLevel_
+
 dsthi_ :: ToSig s as => s -> UA "dsthi" as
 dsthi_ = UA . toSig
 
@@ -233,6 +241,11 @@ dur_ = duration_
 
 duration_ :: ToSig s as => s -> UA "duration" as
 duration_ = UA . toSig
+
+earlyRefLevel_, earlyreflevel_ :: ToSig s as => s -> UA "earlyRefLevel" as
+earlyRefLevel_ = UA . toSig
+
+earlyreflevel_ = earlyRefLevel_
 
 end_ :: ToSig s as => s -> UA "end" as
 end_ = UA . toSig
@@ -303,6 +316,11 @@ in_ = UA . toSig
 initFreq_ :: ToSig s as => s -> UA "initFreq" as
 initFreq_ = UA . toSig
 
+inputBW_, inputbw_ :: ToSig s as => s -> UA "inputBW" as
+inputBW_ = UA . toSig
+
+inputbw_ = inputBW_
+
 integrate_ :: ToSig s as => s -> UA "integrate" as
 integrate_ = UA . toSig
 
@@ -372,6 +390,11 @@ maxdelaytime_ = maxDelayTime_
 
 maxFreq_ :: ToSig s as => s -> UA "maxFreq" as
 maxFreq_ = UA . toSig
+
+maxRoomSize_, maxroomsize_ :: ToSig s as => s -> UA "maxRoomSize" as
+maxRoomSize_ = UA . toSig
+
+maxroomsize_ = maxRoomSize_
 
 -- | Alias of 'max_', for SC compatibility
 maxVal_ :: ToSig s as => s -> UA "max" as
@@ -477,8 +500,21 @@ reset_ = UA . toSig
 resetPos_ :: ToSig s as => s -> UA "resetPos" as
 resetPos_ = UA . toSig
 
+revTime_, revtime_ :: ToSig s as => s -> UA "revTime" as
+revTime_ = UA . toSig
+
+-- | Alias, for compatibility
+revtime_ = revTime_
+
 room_ :: ToSig s as => s -> UA "room" as
 room_ = UA . toSig
+
+roomSize_ :: ToSig s as => s -> UA "roomSize" as
+roomSize_ = UA . toSig
+
+-- | Alias, for compatibility
+roomsize_ :: ToSig s as => s -> UA "roomSize" as
+roomsize_ = roomSize_
 
 root_ :: ToSig s as => s -> UA "root" as
 root_ = UA . toSig
@@ -507,6 +543,9 @@ slopeAbove_ = UA . toSig
 slopeBelow_ :: ToSig s as => s -> UA "slopeBelow" as
 slopeBelow_ = UA . toSig
 
+spread_ :: ToSig s as => s -> UA "spread" as
+spread_ = UA . toSig
+
 spring_ :: ToSig s as => s -> UA "spring" as
 spring_ = UA . toSig
 
@@ -533,6 +572,11 @@ susLevel_ = UA . toSig
 
 syncFreq_ :: ToSig s as => s -> UA "syncFreq" as
 syncFreq_ = UA . toSig
+
+tailLevel_, taillevel_ :: ToSig s as => s -> UA "tailLevel" as
+tailLevel_ = UA . toSig
+
+taillevel_ = tailLevel_
 
 threshold_ :: ToSig s as => s -> UA "threshold" as
 threshold_ = UA . toSig

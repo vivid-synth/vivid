@@ -87,19 +87,22 @@ numberOfSyncIdsToDrop :: Int
 numberOfSyncIdsToDrop = 10000
 
 makeEmptySCServerState :: IO SCServerState
-makeEmptySCServerState = atomically $ do
-   sockConnectStarted <- newTVar False
-   sockIORef <- newEmptyTMVar -- newTVar Nothing -- newIORef Nothing
-   listenerIORef <- newEmptyTMVar -- newTVar Nothing -- newIORef Nothing
+-- We don't do this with 'atomically' because you can't put 'atomically' in
+--   'unsafePerformIO' (or, apparently you can with the "!_ =" hack I was
+--   doing, but let's do the recommended way):
+makeEmptySCServerState = do -- atomically $ do
+   sockConnectStarted <- newTVarIO False
+   sockIORef <- newEmptyTMVarIO -- newTVar Nothing -- newIORef Nothing
+   listenerIORef <- newEmptyTMVarIO -- newTVar Nothing -- newIORef Nothing
 
-   availBufIds <- newTVar $ drop 512 $ map BufferId [0..]
+   availBufIds <- newTVarIO $ drop 512 $ map BufferId [0..]
    -- these'll be allocated when we connect (and get a clientId):
-   availNodeIds <- newTVar $ map (NodeId . ((1 `shiftL` 26) .|.)) [1000..]
-   maxBufIds <- newTVar 1024
-   syncIds <- newTVar $ drop numberOfSyncIdsToDrop $ map SyncId [0..]
-   syncMailboxes <- newTVar $ Map.empty
-   serverMessageFunction <- newTVar $ \_ -> return ()
-   definedSDs <- newTVar $ Set.empty
+   availNodeIds <- newTVarIO $ map (NodeId . ((1 `shiftL` 26) .|.)) [1000..]
+   maxBufIds <- newTVarIO 1024
+   syncIds <- newTVarIO $ drop numberOfSyncIdsToDrop $ map SyncId [0..]
+   syncMailboxes <- newTVarIO $ Map.empty
+   serverMessageFunction <- newTVarIO $ \_ -> return ()
+   definedSDs <- newTVarIO $ Set.empty
 
    return $ SCServerState
           { _scServerState_socketConnectStarted = sockConnectStarted

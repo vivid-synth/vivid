@@ -30,6 +30,7 @@ module Vivid.SCServer (
    , NodeId(..)
    , Synth(..)
    , Group(..)
+   , ParGroup(..)
    , defaultGroup
 
    -- * Buffers
@@ -39,6 +40,7 @@ module Vivid.SCServer (
    , makeBufferFromFile
    , newBuffer
    , newBufferFromFile
+   , newBufferFromFileBetween
    , saveBuffer
    , writeBuffer
    , writeBufferWith
@@ -64,7 +66,7 @@ module Vivid.SCServer (
 import Vivid.OSC
 import Vivid.OSC.Bundles (initTreeCommand)
 import qualified Vivid.SC.Server.Commands as SCCmd
-import Vivid.SC.Server.Types (Group(..))
+import Vivid.SC.Server.Types (Group(..), ParGroup(..))
 import qualified Vivid.SC.Server.Commands as SCCmd
 
 import Vivid.Actions.Class
@@ -113,16 +115,19 @@ newBuffer bufferLength = do
 
 -- | Make a buffer and fill it with sound data from a file
 -- 
---   The file path should be absolute (not relative), and if you're connecting to
---   a non-localhost server don't expect it to be able to read files from your
---   hard drive!
+--   The file path should be absolute (not relative), and if you're connecting
+--   to a non-localhost server don't expect it to be able to read files from
+--   your local hard drive!
 -- 
---   Note that like "makeBuffer" this is synchronous
+--   Note that like 'makeBuffer' this is synchronous
 newBufferFromFile :: (VividAction m) => FilePath -> m BufferId
-newBufferFromFile fPath = do
+newBufferFromFile = newBufferFromFileBetween 0 Nothing
+
+newBufferFromFileBetween :: VividAction m => Int32 -> Maybe Int32 -> FilePath -> m BufferId
+newBufferFromFileBetween startTime endTimeMay fPath = do
    bufId <- newBufferId
    oscWSync $ \syncId -> callOSC $
-      SCCmd.b_allocRead bufId fPath 0 Nothing (Just $ SCCmd.sync syncId)
+      SCCmd.b_allocRead bufId fPath startTime endTimeMay (Just $ SCCmd.sync syncId)
    return bufId
 
 makeBufferFromFile :: (VividAction m) => FilePath -> m BufferId

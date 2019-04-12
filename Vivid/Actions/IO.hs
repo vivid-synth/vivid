@@ -41,7 +41,7 @@ module Vivid.Actions.IO (
    ) where
 
 import Vivid.Actions.Class
-import Vivid.OSC (OSC(..), OSCDatum(..), encodeOSC, Timestamp(..), utcToTimestamp)
+import Vivid.OSC (OSC(..), OSCDatum(..), encodeOSC, Timestamp(..), timestampFromUTC)
 -- import Vivid.SC.SynthDef.Types (CalculationRate(..))
 import Vivid.SC.Server.Commands as SCCmd
 import Vivid.SCServer.State (BufferId(..), NodeId(..), SyncId(..), getNextAvailable, scServerState, SCServerState(..))
@@ -88,7 +88,7 @@ instance VividAction IO where
    wait t = threadDelay $ round (realToFrac (t * 10^(6::Int)) :: Double)
 
    getTime :: IO Timestamp
-   getTime = utcToTimestamp <$> getCurrentTime
+   getTime = timestampFromUTC <$> getCurrentTime
 
    newBufferId :: IO BufferId
    newBufferId = do

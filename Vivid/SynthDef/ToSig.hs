@@ -1,25 +1,22 @@
 {-# OPTIONS_HADDOCK show-extensions #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE
 
-{-# LANGUAGE FlexibleInstances #-}
+     CPP
 
--- {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}
--- {-# LANGUAGE DefaultSignatures #-}
--- {-# LANGUAGE ExtendedDefaultRules #-}
--- {-# LANGUAGE FlexibleContexts #-}
--- {-# LANGUAGE GADTs, NoMonoLocalBinds #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+   , FlexibleInstances
 
-{-# LANGUAGE NoMonomorphismRestriction #-}
+   , DataKinds
+   , InstanceSigs
+   , KindSignatures
+   , MultiParamTypeClasses
+   , TypeFamilies, NoMonoLocalBinds
+   , TypeSynonymInstances
+   , UndecidableInstances
+
+   , NoMonomorphismRestriction
+   #-}
 
 module Vivid.SynthDef.ToSig (
      ToSig(..)
@@ -47,13 +44,13 @@ instance (KnownSymbol a, Subset '[a] args) => ToSig (Variable a) args where
 instance ToSig Integer args where
    toSig = pure . Constant . realToFrac
 
+instance ToSig Int args where
+   toSig = pure . Constant . realToFrac
+
 instance ToSig Double args where
    toSig = pure . Constant . realToFrac
 
--- HERE:
 instance ToSig Float args where
-   toSig = pure . Constant
-instance ToSig Int args where
    toSig = pure . Constant . realToFrac
 
 #else

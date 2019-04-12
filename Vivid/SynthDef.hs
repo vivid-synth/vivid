@@ -263,7 +263,10 @@ indexOfName haystack key =
 
 getFreshUGenGraphId :: SDBody' args Int
 getFreshUGenGraphId = do
-   (i:ds, synthDef, argList) <- get
+   (ids, synthDef, argList) <- get
+   let (i:ds) = case ids of
+          [] -> error "You got to the end of an infinite list!"
+          _ -> ids
    put (ds, synthDef, argList)
    return i
 

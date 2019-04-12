@@ -3,15 +3,18 @@
 
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE
+     DataKinds
+   , ExistentialQuantification
+   , KindSignatures
+   , LambdaCase
 
-{-# LANGUAGE NoIncoherentInstances #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE NoUndecidableInstances #-}
+   , NoIncoherentInstances
+   , NoMonomorphismRestriction
+   , NoUndecidableInstances
 
-{-# LANGUAGE FlexibleContexts #-}
+   , FlexibleContexts
+   #-}
 
 module Vivid.Envelopes (
      EnvLiterally(..)
@@ -129,24 +132,33 @@ curveNumber :: EnvCurve -> Float
 curveNumber = shapeNumber
 
 envCurveNumber :: EnvCurve -> Float
-envCurveNumber Curve_Step = 0
-envCurveNumber Curve_Linear = 1
-envCurveNumber Curve_Lin = 1
-envCurveNumber Curve_Exponential = 2
-envCurveNumber Curve_Exp = 2
-envCurveNumber Curve_Sine = 3
-envCurveNumber Curve_Sin = 3
-envCurveNumber Curve_Welch = 4
-envCurveNumber Curve_Wel = 4
-envCurveNumber Curve_Squared = 6
-envCurveNumber Curve_Sqr = 6
-envCurveNumber Curve_Cubed = 7
-envCurveNumber Curve_Cub = 7
-envCurveNumber (Curve_Curve _) = 5
+envCurveNumber = \case
+   Curve_Step -> 0
+
+   Curve_Linear -> 1
+   Curve_Lin -> 1
+
+   Curve_Exponential -> 2
+   Curve_Exp -> 2
+
+   Curve_Sine -> 3
+   Curve_Sin -> 3
+
+   Curve_Welch -> 4
+   Curve_Wel -> 4
+
+   Curve_Squared -> 6
+   Curve_Sqr -> 6
+
+   Curve_Cubed -> 7
+   Curve_Cub -> 7
+
+   Curve_Curve _ -> 5
 
 envCurveFloatNumber :: EnvCurve -> Float
-envCurveFloatNumber (Curve_Curve f) = f
-envCurveFloatNumber _ = 0
+envCurveFloatNumber = \case
+   Curve_Curve f -> f
+   _ -> 0
 
 
 env :: Float -> [(Float, Float)] -> EnvCurve -> EnvLiterally a

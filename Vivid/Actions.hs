@@ -192,8 +192,7 @@ releaseIn releaseSecs s =
 set :: (VividAction m, Subset (InnerVars params) sdArgs, VarList params) => Synth sdArgs -> params -> m ()
 set (Synth nodeId) params = do
    let (as, _) = makeTypedVarList params
-   -- HERE:
-   callOSC $ SCCmd.n_set nodeId [ (k, Right v) | (k, v) <- as ]
+   callOSC $ SCCmd.n_set nodeId (map (\(k,v)->(k, Right v)) as)
 
 -- | Create a real live music-playing synth from a boring, dead SynthDef.
 -- 
@@ -256,13 +255,12 @@ synthNamedG name params =
 makeSynth :: (VividAction m, VarList params, IsNode node) => ByteString -> params -> SCCmd.AddAction -> node -> m NodeId
 makeSynth theSynthName params addAction (getNodeId -> targetNodeId) = do
    nodeId <- newNodeId
-   callOSC $ SCCmd.s_new theSynthName nodeId addAction targetNodeId paramList
+   callOSC $ SCCmd.s_new theSynthName nodeId addAction targetNodeId (map (\(k,v)->(k,Right v)) paramList)
    pure nodeId
  where
-  -- HERE:
-   paramList :: [(ByteString, Either Int32 Float)]
+   paramList :: [(ByteString, Float)]
    paramList =
-      [ (UTF8.fromString k, Right v) | (k, v) <- (fst $ makeTypedVarList params) ]
+      [ (UTF8.fromString k, v) | (k, v) <- (fst $ makeTypedVarList params) ]
 
 
 -- Can dedupe all these!:

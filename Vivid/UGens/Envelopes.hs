@@ -1,18 +1,20 @@
 -- | **Note:** The argument format for these is a little
 --   rough, and is likely to change in the future
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies, NoMonoLocalBinds #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE
+     DataKinds
+   , LambdaCase
+   , OverloadedStrings
+   , ScopedTypeVariables
+   , TypeFamilies, NoMonoLocalBinds
+   , ViewPatterns
 
-{-# LANGUAGE FlexibleContexts #-}
+   , FlexibleContexts
 
-{-# LANGUAGE NoIncoherentInstances #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE NoUndecidableInstances #-}
+   , NoIncoherentInstances
+   , NoMonomorphismRestriction
+   , NoUndecidableInstances
+   #-}
 
 module Vivid.UGens.Envelopes (
      -- In UGens.Filters.Linear:
