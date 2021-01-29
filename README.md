@@ -12,7 +12,7 @@ Some people like to read code on GitHub though, so here we are!
 ## Example usage:
 
 ```haskell
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, ExtendedDefaultRules #-}
 
 import Vivid
 
