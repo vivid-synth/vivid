@@ -1,13 +1,11 @@
+
 # Vivid - *music and sound synthesis in Haskell*
 
-This isn't Vivid's home -- that's at http://vivid-synth.com
+Introductory video: https://www.youtube.com/watch?v=xo3zUvPsizo
 
-Some people like to read code on GitHub though, so here we are!
+Listen to examples at: http://vivid-synth.com
 
-**Please don't submit pull requests here -- discuss on the [mailing list][list]**
-
-[list]: http://lurk.org/groups/haskell-art
-
+Haskell package: https://hackage.haskell.org/package/vivid
 
 ## Example usage:
 
@@ -45,4 +43,10 @@ main = do
     putStrLn "(Need to quit the running server for NRT)"
     quitSCServer
     writeNRT "/tmp/song.wav" playSong
+```
+
+## Installation
+
+```bash
+cabal install vivid
 ```
